@@ -219,11 +219,7 @@ int main() {
 		minA = std::min(std::abs(A[i] - Acopy[i]), minA);
 	}
 	std::cout << "max|A - A*| = " << maxA << ", min|A - A*| = " << minA << std::endl;
-#pragma omp parallel
-	{
-		std::cout << "!";
-	}
-	
+
 
 	return 0;
 }
