@@ -1,5 +1,5 @@
-./Debug
-./x64
-./strassen.vcxproj
-./strassen.vcxproj.filters
-./strassen.vcxproj.user
+Debug
+x64
+strassen.vcxproj
+strassen.vcxproj.filters
+strassen.vcxproj.user
