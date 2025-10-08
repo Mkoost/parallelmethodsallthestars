@@ -117,6 +117,15 @@ void Ugauss(std::vector<double>& A22, std::vector<double>& A, int n, int b){
   }
 }
 
+void myprint(std::vector<double> A, int m, int n, int ii=0, int jj=0, int m_=0, int n_=0){
+  for (int i = 0; i < m+m_; ++i){
+    for (int j = 0; j < n+n_; ++j)
+      std::cout << A[(i + ii) * n + (j + jj)] << " ";
+    std::cout << "\n";
+  }
+    std::cout <<"\n";    
+  
+}
 
 double LUBlock(std::vector<double>& A, int n, int b) {
 	auto start = std::chrono::steady_clock::now();
@@ -125,9 +134,8 @@ double LUBlock(std::vector<double>& A, int n, int b) {
   std::vector<double> A23((n-b) * b);
 
 	for (int ii = 0; ii < n; ii += b) {
-    
     // find LU decomp for A22
-  
+    std::cout << ii << "\n\n"; 
     for (int i = ii; i < ii + b; ++i) {
 		  int i_ = i - ii;
       double aii = A[i * n + i];
@@ -152,10 +160,10 @@ double LUBlock(std::vector<double>& A, int n, int b) {
         }
 		  }
 	  }
+    
+  // Find U23
+  for (int i = 0; i < n - ii - b; ++i) A23[i] = A[(ii) * n + i + ii + b] ;
 
-  //TODO: Find U23
-
-  for (int i = 0; i < n - ii - b; ++i) A23[i] = A[(i + ii + b) * n + ii];
 
   for (int i = 0; i < b; ++i)
     for(int j = i + 1; j < b; ++j){
@@ -163,54 +171,60 @@ double LUBlock(std::vector<double>& A, int n, int b) {
       for(int k = ii + b; k < n; ++k)
         A23[j * (n - ii - b) + (k - ii - b)] = (A[(ii + j) * n + k] -= tmp * A[(ii + i) * n + k]);
     }
-
-
-	//TODO: Find L32
-  for (int i = 0; i < n - ii - b; ++i) A32[i * b] = A[(ii) * n + i + ii + b] / A22[0];
+  myprint(A23, n-ii-b, b); 
+	// Find L32
 
   for (int i = 0; i < b; ++i){
     double tmp = A22[i * b + i];
+    for (int k = 0; k < n- ii - b; ++k) 
+       A32[k * b + i] = (A[(k + ii + b) * n + i] /= tmp);  // A[k][i] /= U[i][i]
+    
     for(int j = i + 1; j < b; ++j){
       double tmp2 = A22[i * b + j] / tmp;
       for(int k = ii + b; k < n; ++k)
-          A32[(k - ii - b) * b + j] = (A[k * n + j + ii] -= tmp2 * A[k * n + i + ii]);
+         A[k  * n + j + ii] -= tmp2 * A[k * n + i + ii];
     }
   }
- 
-  //TODO: Find new A33
+  myprint(A32, b, n-ii-b); 
+  // Find new A33
     
   for (int j = ii + b; j < n; ++j)
 			for (int k = ii + b; k < n; ++k) {
 				double sum = 0;
 				for (int l = 0; l < b; ++l) 
-					sum += A32[(j - ii) * b + l] * A23[l * (n - ii - b) + k - ii - b];
+					sum += A32[(j - ii - b) * b + l] * A23[l * (n - ii - b) + k - ii - b];
 				
 				A[j * n + k] -= sum;
 			}
 
-
+  
   }
 
- 
+  myprint(A, n, n);  
 	auto finish = std::chrono::steady_clock::now();
 	std::chrono::duration<double> elapsed = finish - start;
 	double time = elapsed.count();
 	return time;
 }
 
-
 int main() {
-	int n = 1000;
+	int n = 6;
 	int m = 10;
-	int b = 8;
-	std::vector<double> A = { 1, 0.540302, -0.416147, -0.989992, 0.540302, -0.416147, -0.989992, -0.653644, -0.416147, -0.989992, -0.653644, 0.283662, -0.989992, -0.653644, 0.283662, 0.96017 };
-	A.resize(n * n);
+	int b = 2;
+	std::vector<double> A = { 1, 2, 3, 4, 5, 6,
+                            6, 1, 2, 3, 4, 5,
+                            5, 6, 1, 2, 3, 4,
+                            4, 5, 6, 1, 2, 3,
+                            3, 4, 5, 6, 1, 2,
+                            2, 3, 4, 5, 6, 1};
+
+  /*A.resize(n * n);
 	for (int i = 0; i < n; ++i)
 		for (int j = 0; j < n; ++j)
 		{
 			A[i * n + j] = std::cos(i + j);
 		}
-
+*/
 //-------------------------------- LU block
 	std::vector<double> Acopy(A);
 	double tm = LUBlock(Acopy, n, b);
@@ -235,7 +249,7 @@ int main() {
 
   Acopy = A;
 	tm = LU(Acopy, n);
-
+  myprint(Acopy, n, n);
   std::cout << "standart LU: " << tm << "s, ";
 
 	LUmul(Acopy, n);
