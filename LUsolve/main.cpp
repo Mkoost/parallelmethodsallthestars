@@ -155,18 +155,20 @@ double LUBlock(std::vector<double>& A, int n, int b) {
 
   //TODO: Find U23
 
+  for (int i = 0; i < n - ii - b; ++i) A23[i] = A[(i + ii + b) * n + ii];
 
   for (int i = 0; i < b; ++i)
     for(int j = i + 1; j < b; ++j){
       double tmp = A22[j * b + i];
       for(int k = ii + b; k < n; ++k)
-        A23[j * (n - ii - b) + (k - ii - b)] = (A[j * n + k] -= tmp * A[i * n + k]);
+        A23[j * (n - ii - b) + (k - ii - b)] = (A[(ii + j) * n + k] -= tmp * A[(ii + i) * n + k]);
     }
 
 
 	//TODO: Find L32
+  for (int i = 0; i < n - ii - b; ++i) A32[i * b] = A[(ii) * n + i + ii + b] / A22[0];
 
- for (int i = 0; i < b; ++i){
+  for (int i = 0; i < b; ++i){
     double tmp = A22[i * b + i];
     for(int j = i + 1; j < b; ++j){
       double tmp2 = A22[i * b + j] / tmp;
@@ -194,13 +196,13 @@ double LUBlock(std::vector<double>& A, int n, int b) {
 	std::chrono::duration<double> elapsed = finish - start;
 	double time = elapsed.count();
 	return time;
-} 
+}
 
 
 int main() {
-	int n = 20;
+	int n = 1000;
 	int m = 10;
-	int b = 10;
+	int b = 8;
 	std::vector<double> A = { 1, 0.540302, -0.416147, -0.989992, 0.540302, -0.416147, -0.989992, -0.653644, -0.416147, -0.989992, -0.653644, 0.283662, -0.989992, -0.653644, 0.283662, 0.96017 };
 	A.resize(n * n);
 	for (int i = 0; i < n; ++i)
