@@ -160,7 +160,7 @@ double LUBlock(std::vector<double>& A, int n, int b) {
     for(int j = i + 1; j < b; ++j){
       double tmp = A22[j * b + i];
       for(int k = ii + b; k < n; ++k)
-        A[j * n + k] -= tmp * A[i * n + k];
+        A23[j * (n - ii - b) + (k - ii - b)] = (A[j * n + k] -= tmp * A[i * n + k]);
     }
 
 
@@ -171,13 +171,20 @@ double LUBlock(std::vector<double>& A, int n, int b) {
     for(int j = i + 1; j < b; ++j){
       double tmp2 = A22[i * b + j] / tmp;
       for(int k = ii + b; k < n; ++k)
-        A[k * n + j + ii] -= tmp2 * A[k * n + i + ii];
+          A32[(k - ii - b) * b + j] = (A[k * n + j + ii] -= tmp2 * A[k * n + i + ii]);
     }
   }
-
-
+ 
   //TODO: Find new A33
     
+  for (int j = ii + b; j < n; ++j)
+			for (int k = ii + b; k < n; ++k) {
+				double sum = 0;
+				for (int l = 0; l < b; ++l) 
+					sum += A32[(j - ii) * b + l] * A23[l * (n - ii - b) + k - ii - b];
+				
+				A[j * n + k] -= sum;
+			}
 
 
   }
@@ -191,9 +198,9 @@ double LUBlock(std::vector<double>& A, int n, int b) {
 
 
 int main() {
-	int n = 100;
+	int n = 20;
 	int m = 10;
-	int b = 100;
+	int b = 10;
 	std::vector<double> A = { 1, 0.540302, -0.416147, -0.989992, 0.540302, -0.416147, -0.989992, -0.653644, -0.416147, -0.989992, -0.653644, 0.283662, -0.989992, -0.653644, 0.283662, 0.96017 };
 	A.resize(n * n);
 	for (int i = 0; i < n; ++i)
