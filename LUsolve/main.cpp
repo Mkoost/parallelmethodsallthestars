@@ -171,7 +171,7 @@ double LUBlock(std::vector<double>& A, int n, int b) {
     for(int j = i + 1; j < b; ++j){
       double tmp2 = A22[i * b + j] / tmp;
       for(int k = ii + b; k < n; ++k)
-        A[k * n + j] -= tmp2 * A[k * n + i];
+        A[k * n + j + ii] -= tmp2 * A[k * n + i + ii];
     }
   }
 
