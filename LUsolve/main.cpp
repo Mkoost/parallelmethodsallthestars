@@ -3,6 +3,15 @@
 #include <chrono>
 #include <omp.h>
 #include <cmath>
+void fill_random(std::vector<double>& A, int n) {
+
+    for (int i = 0; i < n; ++i) {
+        for (int j = 0; j < n; ++j) {
+            A[i * n + j] = rand();
+
+        }
+    }
+}
 
 double LU(std::vector<double>& A, int n) {
 	auto start = std::chrono::steady_clock::now();
@@ -135,7 +144,7 @@ double LUBlock(std::vector<double>& A, int n, int b) {
 
 	for (int ii = 0; ii < n; ii += b) {
     // find LU decomp for A22
-    std::cout << ii << "\n\n"; 
+ 
     for (int i = ii; i < ii + b; ++i) {
 		  int i_ = i - ii;
       double aii = A[i * n + i];
@@ -171,36 +180,34 @@ double LUBlock(std::vector<double>& A, int n, int b) {
       for(int k = ii + b; k < n; ++k)
         A23[j * (n - ii - b) + (k - ii - b)] = (A[(ii + j) * n + k] -= tmp * A[(ii + i) * n + k]);
     }
-  myprint(A23, n-ii-b, b); 
 	// Find L32
 
   for (int i = 0; i < b; ++i){
     double tmp = A22[i * b + i];
-    for (int k = 0; k < n- ii - b; ++k) 
-       A32[k * b + i] = (A[(k + ii + b) * n + i] /= tmp);  // A[k][i] /= U[i][i]
+    for (int k = 0; k < n - ii - b; ++k) 
+       A32[k * b + i] = (A[(k + ii + b) * n + i + ii] /= tmp);  // A[k][i] /= U[i][i]
     
     for(int j = i + 1; j < b; ++j){
-      double tmp2 = A22[i * b + j] / tmp;
+      double tmp2 = A22[i * b + j];
       for(int k = ii + b; k < n; ++k)
          A[k  * n + j + ii] -= tmp2 * A[k * n + i + ii];
     }
   }
-  myprint(A32, b, n-ii-b); 
+
+  //myprint(A32, b, n-ii-b); 
   // Find new A33
     
+
   for (int j = ii + b; j < n; ++j)
 			for (int k = ii + b; k < n; ++k) {
-				double sum = 0;
-				for (int l = 0; l < b; ++l) 
-					sum += A32[(j - ii - b) * b + l] * A23[l * (n - ii - b) + k - ii - b];
-				
-				A[j * n + k] -= sum;
+			  for(int l = 0; l < b; ++l) 	
+				  A[j * n + k] -= A32[(j - ii - b) * b + l] * A23[l * (n - ii - b) + k - ii - b];
 			}
 
   
   }
 
-  myprint(A, n, n);  
+  // myprint(A, n, n);  
 	auto finish = std::chrono::steady_clock::now();
 	std::chrono::duration<double> elapsed = finish - start;
 	double time = elapsed.count();
@@ -208,32 +215,54 @@ double LUBlock(std::vector<double>& A, int n, int b) {
 }
 
 int main() {
-	int n = 6;
+	int n = 2048;
 	int m = 10;
-	int b = 2;
+	int b = 8;
+  double tm1 = 0, tm2 = 0, maxA, minA;
 	std::vector<double> A = { 1, 2, 3, 4, 5, 6,
+
                             6, 1, 2, 3, 4, 5,
                             5, 6, 1, 2, 3, 4,
                             4, 5, 6, 1, 2, 3,
                             3, 4, 5, 6, 1, 2,
                             2, 3, 4, 5, 6, 1};
 
-  /*A.resize(n * n);
-	for (int i = 0; i < n; ++i)
-		for (int j = 0; j < n; ++j)
-		{
-			A[i * n + j] = std::cos(i + j);
-		}
-*/
-//-------------------------------- LU block
-	std::vector<double> Acopy(A);
-	double tm = LUBlock(Acopy, n, b);
+  A.resize(n * n);
+  fill_random(A, n);
+  //myprint(A, n, n);
 
-	std::cout << "block LU: " << tm << "s, ";
+  std::vector<double> Acopy(A);
+  
+
+//-------------------------------- LU
+  
+
+  Acopy = A;
+	tm1 = LU(Acopy, n);
+  //myprint(Acopy, n, n);
+  std::cout << "standart LU: " << tm1 << "s, ";
 
 	LUmul(Acopy, n);
 	
-	double maxA = std::abs(A[0] - Acopy[0]), minA = std::abs(A[0] - Acopy[0]);
+	maxA = std::abs(A[0] - Acopy[0]), minA = std::abs(A[0] - Acopy[0]);
+
+	for (int i = 0; i < n * n; ++i) {
+		maxA = std::max(std::abs(A[i] - Acopy[i]), maxA);
+		minA = std::min(std::abs(A[i] - Acopy[i]), minA);
+  }
+	std::cout << "max|A - A*| = " << maxA << ", min|A - A*| = " << minA << std::endl;
+
+
+	//-------------------------------- LU block
+  Acopy = A;
+   tm2 = LUBlock(Acopy, n, b);
+	
+
+	std::cout << "block LU: " << tm2 << "s, ";
+
+	LUmul(Acopy, n);
+	
+	maxA = std::abs(A[0] - Acopy[0]), minA = std::abs(A[0] - Acopy[0]);
 
 	for (int i = 0; i < n * n; ++i) {
 		maxA = std::max(std::abs(A[i] - Acopy[i]), maxA);
@@ -241,61 +270,7 @@ int main() {
 	}
 	
 	std::cout << "max|A - A*| = " << maxA << ", min|A - A*| = " << minA << std::endl;
-
-
-
-//-------------------------------- LUmxn
-  
-
-  Acopy = A;
-	tm = LU(Acopy, n);
-  myprint(Acopy, n, n);
-  std::cout << "standart LU: " << tm << "s, ";
-
-	LUmul(Acopy, n);
-	
-	maxA = std::abs(A[0] - Acopy[0]), minA = std::abs(A[0] - Acopy[0]);
-
-	for (int i = 0; i < n * n; ++i) {
-		maxA = std::max(std::abs(A[i] - Acopy[i]), maxA);
-		minA = std::min(std::abs(A[i] - Acopy[i]), minA);
-  }
-	std::cout << "max|A - A*| = " << maxA << ", min|A - A*| = " << minA << std::endl;
-
-
-//-------------------------------- LUmxn
-  Acopy = A;
-	tm = LUmxn(Acopy, n, n);
-
-  std::cout << "LU mxn: " << tm << "s, ";
-
-	LUmul(Acopy, n);
-	
-	maxA = std::abs(A[0] - Acopy[0]), minA = std::abs(A[0] - Acopy[0]);
-
-	for (int i = 0; i < n * n; ++i) {
-		maxA = std::max(std::abs(A[i] - Acopy[i]), maxA);
-		minA = std::min(std::abs(A[i] - Acopy[i]), minA);
-  }
-	std::cout << "max|A - A*| = " << maxA << ", min|A - A*| = " << minA << std::endl;
-//-------------------------------- LU standart
-
-
-  Acopy = A;
-	tm = LUstandart(Acopy, n);
-
-  std::cout << "LU standart: " << tm << "s, ";
-
-	LUmul(Acopy, n);
-	
-	maxA = std::abs(A[0] - Acopy[0]), minA = std::abs(A[0] - Acopy[0]);
-
-	for (int i = 0; i < n * n; ++i) {
-		maxA = std::max(std::abs(A[i] - Acopy[i]), maxA);
-		minA = std::min(std::abs(A[i] - Acopy[i]), minA);
-  }
-	std::cout << "max|A - A*| = " << maxA << ", min|A - A*| = " << minA << std::endl;
-	
+  std::cout << "Speedup:" << tm1/tm2 << std::endl;
 	return 0;
 }
 
