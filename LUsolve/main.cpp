@@ -105,26 +105,6 @@ double LUmxn(std::vector<double>& A, int m, int n) {
     return elapsed.count();
 }
 
-void Lgauss(std::vector<double>& A22, std::vector<double>& A, int n, int b){
-  for (int i = 0; i < b; ++i)
-    for(int j = i + 1; j < b; ++j){
-      double tmp = A22[j * b + i];
-      for(int k = 0; k < n; ++k)
-        A[j * n + k] -= tmp * A[i * n + k];
-    }
-
-}
-
-void Ugauss(std::vector<double>& A22, std::vector<double>& A, int n, int b){
-  for (int i = 0; i < b; ++i){
-    double tmp = A22[i * b + i];
-    for(int j = i + 1; j < b; ++j){
-      double tmp2 = A22[i * b + j] / tmp;
-      for(int k = 0; k < n; ++k)
-        A[k * n + j] -= tmp2 * A[j * n + i];
-    }
-  }
-}
 
 void myprint(std::vector<double> A, int m, int n, int ii=0, int jj=0, int m_=0, int n_=0){
   for (int i = 0; i < m+m_; ++i){
@@ -214,8 +194,8 @@ double LUBlock(std::vector<double>& A, int n, int b) {
 	return time;
 }
 
-int main() {
-	int n = 2048;
+int main(int argn, char** argc) {
+	int n = 2000;
 	int m = 10;
 	int b = 8;
   double tm1 = 0, tm2 = 0, maxA, minA;
@@ -270,7 +250,7 @@ int main() {
 	}
 	
 	std::cout << "max|A - A*| = " << maxA << ", min|A - A*| = " << minA << std::endl;
-  std::cout << "Speedup:" << tm1/tm2 << std::endl;
+  std::cout << "Speedup: " << tm1/tm2 << std::endl;
 	return 0;
 }
 
