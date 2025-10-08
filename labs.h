@@ -1,3 +1,4 @@
+
 #ifndef MYLABS__
 #define MYLABS__
 
@@ -5,7 +6,3 @@
 #include "strassen.inl"
 
 #endif
-
-
-
-

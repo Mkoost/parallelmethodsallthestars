@@ -96,6 +96,28 @@ double LUmxn(std::vector<double>& A, int m, int n) {
     return elapsed.count();
 }
 
+void Lgauss(std::vector<double>& A22, std::vector<double>& A, int n, int b){
+  for (int i = 0; i < b; ++i)
+    for(int j = i + 1; j < b; ++j){
+      double tmp = A22[j * b + i];
+      for(int k = 0; k < n; ++k)
+        A[j * n + k] -= tmp * A[i * n + k];
+    }
+
+}
+
+void Ugauss(std::vector<double>& A22, std::vector<double>& A, int n, int b){
+  for (int i = 0; i < b; ++i){
+    double tmp = A22[i * b + i];
+    for(int j = i + 1; j < b; ++j){
+      double tmp2 = A22[i * b + j] / tmp;
+      for(int k = 0; k < n; ++k)
+        A[k * n + j] -= tmp2 * A[j * n + i];
+    }
+  }
+}
+
+
 double LUBlock(std::vector<double>& A, int n, int b) {
 	auto start = std::chrono::steady_clock::now();
   std::vector<double> A22(b * b);
@@ -129,14 +151,30 @@ double LUBlock(std::vector<double>& A, int n, int b) {
 				  A22[j_ * b + k_] = (A[j * n + k] -= A22[j_ * b + i_] * A22[i_ * b + k_]);
         }
 		  }
-    
-	}
-  //TODO: Find L32
+	  }
+
+  //TODO: Find U23
 
 
+  for (int i = 0; i < b; ++i)
+    for(int j = i + 1; j < b; ++j){
+      double tmp = A22[j * b + i];
+      for(int k = ii + b; k < n; ++k)
+        A[j * n + k] -= tmp * A[i * n + k];
+    }
 
-	//TODO: Find U23
- 
+
+	//TODO: Find L32
+
+ for (int i = 0; i < b; ++i){
+    double tmp = A22[i * b + i];
+    for(int j = i + 1; j < b; ++j){
+      double tmp2 = A22[i * b + j] / tmp;
+      for(int k = ii + b; k < n; ++k)
+        A[k * n + j] -= tmp2 * A[k * n + i];
+    }
+  }
+
 
   //TODO: Find new A33
     
