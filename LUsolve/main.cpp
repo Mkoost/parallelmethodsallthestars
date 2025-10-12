@@ -17,7 +17,7 @@ void fill_random(std::vector<double>& A, int n) {
 // KIND OF STANDART LU -------------------------------------------------------------------------------
 
 double LU(std::vector<double>& A, int n) {
-	auto start = std::chrono::steady_clock::now();
+	double start = omp_get_wtime();
 	std::vector<double> column(n);
 	std::vector<double> row(n);
 
@@ -36,9 +36,8 @@ double LU(std::vector<double>& A, int n) {
 		}
 
 	}
-	auto finish = std::chrono::steady_clock::now();
-	std::chrono::duration<double> elapsed = finish - start;
-	double time = elapsed.count();
+	double finish = omp_get_wtime();
+	double time = finish - start;
 	return time;
 
 }
@@ -202,7 +201,8 @@ void __find_L32(std::vector<double>& A22, std::vector<double>& A32, int b, int n
 }
 
 double LUBlock(std::vector<double>& A, int n, int b) {
-	auto start = std::chrono::steady_clock::now();
+	double start = omp_get_wtime();
+
 	std::vector<double> A22(b * b);
 	std::vector<double> A32((n - b) * b);
 	std::vector<double> A23((n - b) * b);
@@ -231,43 +231,169 @@ double LUBlock(std::vector<double>& A, int n, int b) {
 				}
 			}
 		// paste blocks
-		__LU_blocks_paste(A, A22, A23, A32, ii, b, n);
+		
+			__LU_blocks_paste(A, A22, A23, A32, ii, b, n);
+		
+		
 	}
 
 
 	// myprint(A, n, n);  
+	double finish = omp_get_wtime();
+	double time = finish - start;
+	return time;
+}
+
+// LU BLOCK PARALLEL -------------------------------------------------------------------------------
+
+double __LU_blocks_сopy_parallel(
+	std::vector<double>& A,
+	std::vector<double>& A22,
+	std::vector<double>& A23,
+	std::vector<double>& A32,
+	int ii, int b, int n) {
+	int N = n - ii - b;
+	auto start = std::chrono::steady_clock::now();
+	for (int i = 0; i < b; ++i)
+		for (int j = 0; j < b; ++j)
+			A22[i * b + j] = A[(ii + i) * n + j + ii];
+
+	for (int i = 0; i < b; ++i)
+		for (int j = 0; j < N; ++j)
+			A23[i * N + j] = A[(ii + i) * n + j + ii + b];
+
+	for (int i = 0; i < N; ++i)
+		for (int j = 0; j < b; ++j)
+			A32[i * b + j] = A[(ii + i + b) * n + j + ii];
+
 	auto finish = std::chrono::steady_clock::now();
 	std::chrono::duration<double> elapsed = finish - start;
 	double time = elapsed.count();
 	return time;
 }
 
-// LU BLOCK PARALLEL -------------------------------------------------------------------------------
+double __LU_blocks_paste_parallel(
+	std::vector<double>& A,
+	std::vector<double>& A22,
+	std::vector<double>& A23,
+	std::vector<double>& A32,
+	int ii, int b, int n) {
+	int N = n - ii - b;
+	auto start = std::chrono::steady_clock::now();
 
+	for (int i = 0; i < b; ++i)
+		for (int j = 0; j < b; ++j)
+			A[(ii + i) * n + j + ii] = A22[i * b + j];
 
+	for (int i = 0; i < b; ++i)
+		for (int j = 0; j < N; ++j)
+			A[(ii + i) * n + j + ii + b] = A23[i * N + j];
 
+	for (int i = 0; i < N; ++i)
+		for (int j = 0; j < b; ++j)
+			A[(ii + i + b) * n + j + ii] = A32[i * b + j];
+	auto finish = std::chrono::steady_clock::now();
+	std::chrono::duration<double> elapsed = finish - start;
+	double time = elapsed.count();
+	return time;
+}
+
+double __find_LU22_parallel(std::vector<double>& A22, int b, int nthreads = 4) {
+	auto start = std::chrono::steady_clock::now();
+	for (int i_ = 0; i_ < b; ++i_) {
+		double aii = A22[i_ * b + i_];
+		for (int j_ = i_ + 1; j_ < b; ++j_)
+			A22[j_ * b + i_] /= aii;
+		for (int j_ = i_ + 1; j_ < b; ++j_) {
+			double c = A22[j_ * b + i_];
+			for (int k_ = i_ + 1; k_ < b; ++k_)
+				A22[j_ * b + k_] -= c * A22[i_ * b + k_];
+		}
+	}
+	auto finish = std::chrono::steady_clock::now();
+	std::chrono::duration<double> elapsed = finish - start;
+	double time = elapsed.count();
+	return time;
+}
+
+double __find_U23_parallel(std::vector<double>& A22, std::vector<double>& A23, int b, int n, int nthreads) {
+	auto start = std::chrono::steady_clock::now();
+	for (int i = 0; i < b; ++i)
+		for (int j = i + 1; j < b; ++j) {
+			double tmp = A22[j * b + i];
+			for (int k = 0; k < n; ++k)
+				A23[j * n + k] -= tmp * A23[i * n + k];
+		}
+	auto finish = std::chrono::steady_clock::now();
+	std::chrono::duration<double> elapsed = finish - start;
+	double time = elapsed.count();
+	return time;
+}
+
+double __find_L32_parallel(std::vector<double>& A22, std::vector<double>& A32, int b, int n, int nthreads = 4) {
+	auto start = std::chrono::steady_clock::now();
+	for (int i = 0; i < b; ++i) {
+		double tmp = A22[i * b + i];
+		for (int k = 0; k < n; ++k)
+			A32[k * b + i] /= tmp;
+		for (int j = i + 1; j < b; ++j) {
+			double tmp2 = A22[i * b + j];
+			for (int k = 0; k < n; ++k)
+				A32[k * b + j] -= tmp2 * A32[k * b + i];
+		}
+	}
+	auto finish = std::chrono::steady_clock::now();
+	std::chrono::duration<double> elapsed = finish - start;
+	double time = elapsed.count();
+	return time;
+}
 
 double LUBlockParallel(std::vector<double>& A, int n, int b, int nthreads = 4) {
-	auto start = std::chrono::steady_clock::now();
+	double start = omp_get_wtime();
 
 	std::vector<double> A22(b * b);
 	std::vector<double> A32((n - b) * b);
 	std::vector<double> A23((n - b) * b);
+	int bl = std::max(b/nthreads, 1) ;
 	//memcpy
-#pragma omp parallel num_threads(nthreads) shared(A22, A32, A23, A, n, b) 
+#pragma omp parallel num_threads(nthreads)
 	{
 		for (int ii = 0; ii < n; ii += b) {
 			int N = n - ii - b;
-#pragma omp single
-			{
+
 				// copy blocks
-				__LU_blocks_сopy(A, A22, A23, A32, ii, b, n);
+#pragma omp for schedule(dynamic, 8)
+			for (int i = 0; i < b; ++i)
+				for (int j = 0; j < b; ++j)
+					A22[i * b + j] = A[(ii + i) * n + j + ii];
+
+#pragma omp for schedule(dynamic, 8)
+			for (int i = 0; i < b; ++i)
+				for (int j = 0; j < N; ++j)
+					A23[i * N + j] = A[(ii + i) * n + j + ii + b];
+
+#pragma omp for schedule(dynamic, 8)
+			for (int i = 0; i < N; ++i)
+				for (int j = 0; j < b; ++j)
+					A32[i * b + j] = A[(ii + i + b) * n + j + ii];
 
 				// find LU decomp for A22
-				__find_LU22(A22, b);
-			}
 
-#pragma omp flush
+				for (int i_ = 0; i_ < b; ++i_) {
+					
+#pragma omp single
+					{
+						double aii = A22[i_ * b + i_];
+						for (int j_ = i_ + 1; j_ < b; ++j_)
+							A22[j_ * b + i_] /= aii;
+					}
+#pragma omp for schedule(static)
+					for (int j_ = i_ + 1; j_ < b; ++j_) {
+						double c = A22[j_ * b + i_];
+						for (int k_ = i_ + 1; k_ < b; ++k_)
+							A22[j_ * b + k_] -= c * A22[i_ * b + k_];
+					}
+				}
 
 			// Find U23
 
@@ -281,12 +407,12 @@ double LUBlockParallel(std::vector<double>& A, int n, int b, int nthreads = 4) {
 			// Find L32
 
 			for (int i = 0; i < b; ++i) {
-
-				double tmp = A22[i * b + i];
-#pragma omp for
-				for (int k = 0; k < N; ++k)
-					A32[k * b + i] /= tmp;
-
+#pragma omp single
+			{
+					double tmp = A22[i * b + i];
+					for (int k = 0; k < N; ++k)
+						A32[k * b + i] /= tmp;
+			}
 #pragma omp for schedule(static) 
 				for (int j = i + 1; j < b; ++j) {
 					double tmp2 = A22[i * b + j];
@@ -295,29 +421,38 @@ double LUBlockParallel(std::vector<double>& A, int n, int b, int nthreads = 4) {
 				}
 			}
 
-#pragma omp flush
+
 
 			// Find new A33
-#pragma omp for schedule(static)
+		#pragma omp for schedule(dynamic, 8) nowait
 			for (int j = ii + b; j < n; ++j)
 				for (int k = ii + b; k < n; ++k) {
 					for (int l = 0; l < b; ++l) {
-						A[j * n + k] -= A32[(j - ii - b) * b + l] * A23[l * (n - ii - b) + k - ii - b];
+						A[j * n + k] -= A32[(j - ii - b) * b + l] * A23[l * N + k - ii - b];
 					}
 				}
 
 			// paste blocks
-#pragma omp single
-			{
-				__LU_blocks_paste(A, A22, A23, A32, ii, b, n);
-			}
+#pragma omp for schedule(dynamic, 8) 
+			for (int i = 0; i < b; ++i)
+				for (int j = 0; j < b; ++j)
+					A[(ii + i) * n + j + ii] = A22[i * b + j];
+
+#pragma omp for schedule(dynamic, 8)
+			for (int i = 0; i < b; ++i)
+				for (int j = 0; j < N; ++j)
+					A[(ii + i) * n + j + ii + b] = A23[i * N + j];
+
+#pragma omp for schedule(dynamic, 8)
+			for (int i = 0; i < N; ++i)
+				for (int j = 0; j < b; ++j)
+					A[(ii + i + b) * n + j + ii] = A32[i * b + j];
 		}
 	}
 
 	// myprint(A, n, n);  
-	auto finish = std::chrono::steady_clock::now();
-	std::chrono::duration<double> elapsed = finish - start;
-	double time = elapsed.count();
+	double finish = omp_get_wtime();
+	double time = finish - start;
 
 	//	std::cout << "copy: " << ops[0] << "s , LU22: " << ops[1] << "s , U23: " << ops[2] << "s , L32: " << ops[3] << "s, A'33: " << ops[5] << "s , paste: " << ops[4] << "s" << "\n\r";
 
@@ -359,20 +494,13 @@ double LUParallel(std::vector<double>& A, int n, int nthreads = 4) {
 
 int main(int argn, char** argc) {
 
-	int n = 2048;
+	int n = 4096;
 	int m = 10;
 	int b1 = 32;
 	int b = b1;
 	int nthreads = 4;
 	double tm1 = 0, tm2 = 0, maxA, minA;
-	std::vector<double> A = { 1, 2, 3, 4, 5, 6,
-
-							6, 1, 2, 3, 4, 5,
-							5, 6, 1, 2, 3, 4,
-							4, 5, 6, 1, 2, 3,
-							3, 4, 5, 6, 1, 2,
-							2, 3, 4, 5, 6, 1 };
-
+	std::vector<double> A;
 	A.resize(n * n);
 	fill_random(A, n);
 	//myprint(A, n, n);
