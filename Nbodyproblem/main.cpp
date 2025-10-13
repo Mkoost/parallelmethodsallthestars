@@ -1,7 +1,9 @@
 #include <iostream>
+#include <fstream>
 #include <vector>
 #include <cmath>
 using vec3 = double[3];
+using vec2 = double[2];
 
 constexpr const double G = 6.67 * 1e-11;
 constexpr const vec3 zerovec{0, 0, 0};
@@ -10,15 +12,38 @@ struct body{
     vec3 v;
     vec3 a;
     double mass;
-}
+
+    body() : r{0,0,0}, v{0,0,0}, a{0,0,0}, mass(0.0) {}
+};
 
 
 struct Nbody{
-    std::vector<double> bodies;
+    std::vector<body> bodies;
+    size_t n = 0;
 
-    double calculate_forces(){
-        for(int i = 0, int n = bodies.size(); i < n; ++i){
-            bodies[i] = zerovec;
+    // 4
+    Nbody() {
+        std::ifstream fin("4body.txt");
+        
+        fin >> n;
+        body tmp_bod;
+
+        for (int i = 0; i < n; ++i) {
+            fin >> tmp_bod.mass
+                >> tmp_bod.r[0] >> tmp_bod.r[1] >> tmp_bod.r[2]
+                >> tmp_bod.v[0] >> tmp_bod.v[1] >> tmp_bod.v[2];
+            bodies.emplace_back(tmp_bod);
+        }
+
+        fin.close();
+
+        calculate_forces();
+    }
+
+    void calculate_forces(){
+        
+        for (int i = 0; i < n; i++) {
+            // bodies[i] = zerovec[i];
             for(int j = 0; j < n; ++j){
                 if(i == j) continue;
 
@@ -30,20 +55,45 @@ struct Nbody{
                 double tmp = std::max(r * r2, 1e-9);
 
                 for(int k = 0; k < 3; ++k)
-                    bodies[i].a[k] += G * (bodies[i].r[k] - bodies[j].r[k]) * bodies[j].m / tmp;
+                    bodies[i].a[k] += G * (bodies[i].r[k] - bodies[j].r[k]) * bodies[j].mass / tmp;
 
             }
         }
     }
-}
+
+    void logs_solve(double step = 0.05, double end_t = 0.1) {
+        vec2 k1, k2, k3, k4;
+        for (double t = 0; t < end_t / step; t += step) {
+            for (body &bod : bodies)
+                for (int i = 0; i < 3 ; i++) {
+                    // 0 <-> dr, 1 <-> dv
+                    k1[0] = bod.v[i];
+                    k2[0] = bod.v[i] + step/2 * k1[0];
+                    k3[0] = bod.v[i] + step/2 * k2[0];
+                    k4[0] = bod.v[i] + step * k3[0];
+                    bod.r[i] += step/6 * (k1[0] + 2*k2[0] + 2*k3[0] + k4[0]);
+
+                    k1[1] = bod.a[i];
+                    k2[1] = bod.a[i] + step/2 * k1[1];
+                    k3[1] = bod.a[i] + step/2 * k2[1];
+                    k4[1] = bod.a[i] + step * k3[1];
+                    bod.v[i] += step/6 * (k1[1] + 2*k2[1] + 2*k3[1] + k4[1]);
+                }
+            calculate_forces();
+            // logs and test to do
+        }
+    }
+
+    void output(); // ?
+};
 
 
 
 
 int main(){
+    Nbody N1;
 
-    
-    
+    std::cout << N1.bodies[0].r[0] << " " << N1.bodies[2].a[0] << "\n";
 
     return 0;
 }
