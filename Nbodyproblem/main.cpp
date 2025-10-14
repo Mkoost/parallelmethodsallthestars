@@ -2,6 +2,7 @@
 #include <fstream>
 #include <vector>
 #include <cmath>
+#include <iomanip>
 using vec3 = double[3];
 using vec2 = double[2];
 
@@ -15,7 +16,6 @@ struct body{
 
     body() : r{0,0,0}, v{0,0,0}, a{0,0,0}, mass(0.0) {}
 };
-
 
 struct Nbody{
     std::vector<body> bodies;
@@ -40,10 +40,15 @@ struct Nbody{
         calculate_forces();
     }
 
+    void a_reset() {
+        for (int i = 0; i < n; ++i)
+            for(int k = 0; k < 3; ++k)
+                bodies[i].a[k] = 0;
+    }
+
     void calculate_forces(){
-        
+        a_reset();
         for (int i = 0; i < n; i++) {
-            // bodies[i] = zerovec[i];
             for(int j = 0; j < n; ++j){
                 if(i == j) continue;
 
@@ -52,18 +57,35 @@ struct Nbody{
                             + (bodies[i].r[2] - bodies[j].r[2]) * (bodies[i].r[2] - bodies[j].r[2]);
 
                 double r = std::sqrt(r2);
-                double tmp = std::max(r * r2, 1e-9);
+                double tmp = std::max(std::pow(r, 3), 1e-9);
 
                 for(int k = 0; k < 3; ++k)
-                    bodies[i].a[k] += G * (bodies[i].r[k] - bodies[j].r[k]) * bodies[j].mass / tmp;
+                    bodies[i].a[k] -= G * (bodies[i].r[k] - bodies[j].r[k]) * bodies[j].mass / tmp;
 
             }
         }
     }
 
-    void logs_solve(double step = 0.05, double end_t = 0.1) {
+    void logs_solve(double step = 0.00005, double end_t = 20) {
+        for (int i = 1; i < 5; ++i) {
+            std::ofstream file("nt" + std::to_string(i) + ".txt", std::ios::trunc);
+            file.close();
+        }
+
+        std::vector<std::ofstream> files;
+        for (int i = 1; i < 5; ++i) 
+            files.push_back(std::ofstream("nt" + std::to_string(i) + ".txt", std::ios::app));
+
         vec2 k1, k2, k3, k4;
-        for (double t = 0; t < end_t / step; t += step) {
+        double remainder;
+        for (double t = 0; t <= end_t + 1000*step; t += step) {
+            remainder = std::fmod(t, 0.1);
+            if (std::abs(remainder) < 1e-10 || std::abs(remainder - 0.1) < 1e-10)
+                for (int i = 0; i < 4; ++i) {
+                    files[i] << std::setprecision(6) << t << " ";
+                    files[i] << std::setprecision(16) << bodies[i].r[0] << " " << bodies[i].r[1] << " " << bodies[i].r[2] << "\n";
+                }
+
             for (body &bod : bodies)
                 for (int i = 0; i < 3 ; i++) {
                     // 0 <-> dr, 1 <-> dv
@@ -79,12 +101,13 @@ struct Nbody{
                     k4[1] = bod.a[i] + step * k3[1];
                     bod.v[i] += step/6 * (k1[1] + 2*k2[1] + 2*k3[1] + k4[1]);
                 }
-            calculate_forces();
-            // logs and test to do
-        }
-    }
 
-    void output(); // ?
+            calculate_forces();            
+        }
+
+        for (std::ofstream& file : files)
+            file.close();
+    }
 };
 
 
@@ -92,8 +115,9 @@ struct Nbody{
 
 int main(){
     Nbody N1;
+    N1.logs_solve();
 
-    std::cout << N1.bodies[0].r[0] << " " << N1.bodies[2].a[0] << "\n";
+    std::cout << N1.bodies[0].r[0] << " " << N1.bodies[2].v[0] << "\n";
 
     return 0;
 }
