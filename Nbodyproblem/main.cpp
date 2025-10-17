@@ -37,7 +37,7 @@ struct Nbody{
 
         fin.close();
 
-        calculate_forces();
+        //calculate_forces();
     }
 
     void a_reset() {
@@ -46,7 +46,7 @@ struct Nbody{
                 bodies[i].a[k] = 0;
     }
 
-    void calculate_forces(){
+    void calculate_forces(eps=1e-3){
         a_reset();
         for (int i = 0; i < n; i++) {
             for(int j = 0; j < n; ++j){
@@ -57,7 +57,7 @@ struct Nbody{
                             + (bodies[i].r[2] - bodies[j].r[2]) * (bodies[i].r[2] - bodies[j].r[2]);
 
                 double r = std::sqrt(r2);
-                double tmp = std::max(std::pow(r, 3), 1e-9);
+                double tmp = std::max(r2 * r, eps * eps * eps);
 
                 for(int k = 0; k < 3; ++k)
                     bodies[i].a[k] -= G * (bodies[i].r[k] - bodies[j].r[k]) * bodies[j].mass / tmp;
@@ -85,7 +85,8 @@ struct Nbody{
                     files[i] << std::setprecision(6) << t << " ";
                     files[i] << std::setprecision(16) << bodies[i].r[0] << " " << bodies[i].r[1] << " " << bodies[i].r[2] << "\n";
                 }
-
+            calculate_forces();
+            
             for (body &bod : bodies)
                 for (int i = 0; i < 3 ; i++) {
                     // 0 <-> dr, 1 <-> dv
