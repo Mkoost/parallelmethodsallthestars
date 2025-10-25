@@ -3,6 +3,7 @@
 #include <vector>
 #include <cmath>
 #include <iomanip>
+
 using vec3 = double[3];
 using vec2 = double[2];
 
@@ -37,36 +38,59 @@ struct Nbody{
 
         fin.close();
 
-        //calculate_forces();
-    }
 
-    void a_reset() {
+        calculate_a(bodies);
+     }
+
+    void a_reset(std::vector<body> &bodies_) {
         for (int i = 0; i < n; ++i)
             for(int k = 0; k < 3; ++k)
-                bodies[i].a[k] = 0;
+                bodies_[i].a[k] = 0;
     }
 
-    void calculate_forces(eps=1e-3){
-        a_reset();
+
+    void calculate_a(std::vector<body> &bodies_){
+        a_reset(bodies_);
         for (int i = 0; i < n; i++) {
             for(int j = 0; j < n; ++j){
                 if(i == j) continue;
 
-                double r2 = (bodies[i].r[0] - bodies[j].r[0]) * (bodies[i].r[0] - bodies[j].r[0]) 
-                            + (bodies[i].r[1] - bodies[j].r[1]) * (bodies[i].r[1] - bodies[j].r[1])
-                            + (bodies[i].r[2] - bodies[j].r[2]) * (bodies[i].r[2] - bodies[j].r[2]);
+                double r2 = (bodies_[i].r[0] - bodies_[j].r[0]) * (bodies_[i].r[0] - bodies_[j].r[0]) 
+                            + (bodies_[i].r[1] - bodies_[j].r[1]) * (bodies_[i].r[1] - bodies_[j].r[1])
+                            + (bodies_[i].r[2] - bodies_[j].r[2]) * (bodies_[i].r[2] - bodies_[j].r[2]);
 
                 double r = std::sqrt(r2);
                 double tmp = std::max(r2 * r, eps * eps * eps);
 
                 for(int k = 0; k < 3; ++k)
-                    bodies[i].a[k] -= G * (bodies[i].r[k] - bodies[j].r[k]) * bodies[j].mass / tmp;
+                    bodies_[i].a[k] -= G * (bodies_[i].r[k] - bodies_[j].r[k]) * bodies_[j].mass / tmp;
 
             }
         }
     }
 
-    void logs_solve(double step = 0.00005, double end_t = 20) {
+    void parallel_calculate(std::vector<body> &bodies_){
+        a_reset(bodies_);
+        #pragma omp parallel for num_threads(nthreads) if(nthreads < (n - i))
+        for (int i = 0; i < n; i++) {
+            for(int j = 0; j < n; ++j){
+                if(i == j) continue;
+
+                double r2 = (bodies_[i].r[0] - bodies_[j].r[0]) * (bodies_[i].r[0] - bodies_[j].r[0]) 
+                            + (bodies_[i].r[1] - bodies_[j].r[1]) * (bodies_[i].r[1] - bodies_[j].r[1])
+                            + (bodies_[i].r[2] - bodies_[j].r[2]) * (bodies_[i].r[2] - bodies_[j].r[2]);
+
+                double r = std::sqrt(r2);
+                double tmp = std::max(r2 * r, eps * eps * eps);
+
+                for(int k = 0; k < 3; ++k)
+                    bodies_[i].a[k] -= G * (bodies_[i].r[k] - bodies_[j].r[k]) * bodies_[j].mass / tmp;
+
+            }
+        }
+    }
+    
+    void logs_solve(double step = 0.00001, double end_t = 20) {
         for (int i = 1; i < 5; ++i) {
             std::ofstream file("nt" + std::to_string(i) + ".txt", std::ios::trunc);
             file.close();
@@ -78,32 +102,118 @@ struct Nbody{
 
         vec2 k1, k2, k3, k4;
         double remainder;
-        for (double t = 0; t <= end_t + 1000*step; t += step) {
+        size_t tmp;
+
+        // снимем копию с bodies
+        std::vector<body> tmp_bodies;
+        std::vector<body> y_n;
+        // TODO: возвращать независимый вектор ускорений?
+        double t = -step;
+
+        for (size_t i = 0; i <= std::floor(end_t / step)+1; i++) {
+            t += step;
             remainder = std::fmod(t, 0.1);
-            if (std::abs(remainder) < 1e-10 || std::abs(remainder - 0.1) < 1e-10)
+            if (i % 10000 == 0) {
                 for (int i = 0; i < 4; ++i) {
                     files[i] << std::setprecision(6) << t << " ";
                     files[i] << std::setprecision(16) << bodies[i].r[0] << " " << bodies[i].r[1] << " " << bodies[i].r[2] << "\n";
                 }
-            calculate_forces();
+
+            }
             
-            for (body &bod : bodies)
+            ///////////////////////////// rk4
+            /////////////////////////////
+            tmp_bodies = bodies;
+            y_n = bodies;
+            calculate_a(tmp_bodies);
+            tmp = 0;
+            for (body &bod : tmp_bodies) {
                 for (int i = 0; i < 3 ; i++) {
                     // 0 <-> dr, 1 <-> dv
                     k1[0] = bod.v[i];
-                    k2[0] = bod.v[i] + step/2 * k1[0];
-                    k3[0] = bod.v[i] + step/2 * k2[0];
-                    k4[0] = bod.v[i] + step * k3[0];
-                    bod.r[i] += step/6 * (k1[0] + 2*k2[0] + 2*k3[0] + k4[0]);
-
                     k1[1] = bod.a[i];
-                    k2[1] = bod.a[i] + step/2 * k1[1];
-                    k3[1] = bod.a[i] + step/2 * k2[1];
-                    k4[1] = bod.a[i] + step * k3[1];
-                    bod.v[i] += step/6 * (k1[1] + 2*k2[1] + 2*k3[1] + k4[1]);
+
+                    bodies[tmp].r[i] += step/6. * k1[0];
+                    bodies[tmp].v[i] += step/6. * k1[1];
+
+                    bod.r[i] = y_n[tmp].r[i] + step/2. * k1[0];
+                    bod.v[i] = y_n[tmp].v[i] + step/2. * k1[1];
                 }
 
-            calculate_forces();            
+                tmp++;
+            }
+            calculate_a(tmp_bodies);
+
+            tmp = 0;
+            for (body &bod : tmp_bodies) {
+                for (int i = 0; i < 3 ; i++) {
+                    // 0 <-> dr, 1 <-> dv
+                    k2[0] = bod.v[i];
+                    k2[1] = bod.a[i];
+
+                    bodies[tmp].r[i] += step / 3. * k2[0];
+                    bodies[tmp].v[i] += step / 3. * k2[1];
+
+                    bod.r[i] = y_n[tmp].r[i] + step / 2. * k2[0];
+                    bod.v[i] = y_n[tmp].v[i] + step / 2. * k2[1];
+                }
+
+                tmp++;
+            }
+            calculate_a(tmp_bodies);
+
+            tmp = 0;
+            for (body &bod : tmp_bodies) {
+                for (int i = 0; i < 3 ; i++) {
+                    // 0 <-> dr, 1 <-> dv
+                    k3[0] = bod.v[i];
+                    k3[1] = bod.a[i];
+
+                    bodies[tmp].r[i] += step / 3. * k3[0];
+                    bodies[tmp].v[i] += step / 3. * k3[1];
+                    
+                    bod.r[i] = y_n[tmp].r[i] + step * k3[0];
+                    bod.v[i] = y_n[tmp].v[i] + step * k3[1];
+                }
+
+                tmp++;
+            }
+            calculate_a(tmp_bodies);
+
+            tmp = 0;
+            for (body &bod : tmp_bodies) {
+                for (int i = 0; i < 3 ; i++) {
+                    // 0 <-> dr, 1 <-> dv
+                    k4[0] = bod.v[i];
+                    k4[1] = bod.a[i];
+                    bodies[tmp].r[i] += step / 6. * k4[0];
+                    bodies[tmp].v[i] += step / 6. * k4[1];
+                }
+
+                tmp++;
+            }
+/*
+            for (body &bod : bodies) {
+                for (int i = 0; i < 3 ; i++) {
+                    // 0 <-> dr, 1 <-> dv
+
+                    k1[0] = bod.v[i];
+                    k1[1] = bod.a[i];
+
+                    k2[0] = bod.v[i] + step/2 * k1[0];
+                    k2[1] = bod.a[i] + step/2 * k1[1];
+
+                    k3[0] = bod.v[i] + step/2 * k2[0];
+                    k3[1] = bod.a[i] + step/2 * k2[1];
+
+                    k4[0] = bod.v[i] + step * k3[0];
+                    k4[1] = bod.a[i] + step * k3[1];
+
+                    bod.r[i] += step/6 * (k1[0] + 2*k2[0] + 2*k3[0] + k4[0]);                                        
+                    bod.v[i] += step/6 * (k1[1] + 2*k2[1] + 2*k3[1] + k4[1]);
+                }
+            }
+*/
         }
 
         for (std::ofstream& file : files)

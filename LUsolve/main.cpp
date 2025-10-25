@@ -349,8 +349,8 @@ double __find_L32_parallel(std::vector<double>& A22, std::vector<double>& A32, i
 }
 
 double LUBlockParallel(std::vector<double>& A, int n, int b, int nthreads = 4) {
+	
 	double start = omp_get_wtime();
-
 	std::vector<double> A22(b * b);
 	std::vector<double> A32((n - b) * b);
 	std::vector<double> A23((n - b) * b);
@@ -512,6 +512,7 @@ int main(int argn, char** argc) {
 
 
 	Acopy = A;
+	#pragma omp flush
 	tm1 = LU(Acopy, n);
 	//myprint(Acopy, n, n);
 	std::cout << "standart LU: " << tm1 << "s\n\n\r";
@@ -520,6 +521,7 @@ int main(int argn, char** argc) {
 
 	//-------------------------------- LU block
 	Acopy = A;
+
 	tm2 = LUBlock(Acopy, n, b);
 
 
