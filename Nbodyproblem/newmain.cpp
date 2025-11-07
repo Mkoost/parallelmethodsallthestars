@@ -43,14 +43,14 @@ struct NBodyProblem {
 
         double r3 = r[0] * r[0] + r[1] * r[1] + r[2] * r[2];
         r3 *= std::sqrt(r3);
-        r3 = std::max(r3, 1e-30);
+        r3 = std::max(r3, 1e-10);
 
         for (int k = 0; k < 3; ++k)
-          b.a[k] -= (G * bodies[j].mass) * r[k] / r3;
+          b.a[k] -= (bodies[j].mass) * r[k] / r3;
       }
 
       for (int k = 0; k < 3; ++k)
-        bodies[i].a[k] = b.a[k];
+        bodies[i].a[k] = G * b.a[k];
     }
   }
 };
@@ -73,13 +73,13 @@ struct RK4Integrator {
   void step(double num, NBodyProblem &nbodies) {
 
     int n = yn.size();
-#pragma omp parallel shared(num, n, nbodies)                                                 \
+#pragma omp parallel shared(num, n, nbodies)                                   \
     num_threads(omp_get_max_threads()) if (omp_get_max_threads() > 1)
     {
       for (int ii = 0; ii < num; ++ii) {
 
         nbodies.calculate_a();
-#pragma omp single
+#pragma omp for
         for (int i = 0; i < n; ++i) {
           for (int k = 0; k < 3; ++k) {
             yn[i].r[k] = nbodies.bodies[i].r[k];
@@ -95,7 +95,7 @@ struct RK4Integrator {
         }
 
         nbodies.calculate_a();
-#pragma omp single
+#pragma omp for
         for (int i = 0; i < n; ++i) {
           for (int k = 0; k < 3; ++k) {
             yn[i].a[k] += 2. * nbodies.bodies[i].a[k];
@@ -111,7 +111,7 @@ struct RK4Integrator {
         }
 
         nbodies.calculate_a();
-#pragma omp single
+#pragma omp for
         for (int i = 0; i < n; ++i) {
           for (int k = 0; k < 3; ++k) {
             yn[i].a[k] += 2. * nbodies.bodies[i].a[k];
@@ -125,7 +125,7 @@ struct RK4Integrator {
         }
 
         nbodies.calculate_a();
-#pragma omp single
+#pragma omp for
         for (int i = 0; i < n; ++i) {
           for (int k = 0; k < 3; ++k) {
             nbodies.bodies[i].r[k] =
@@ -134,6 +134,70 @@ struct RK4Integrator {
             nbodies.bodies[i].v[k] =
                 yn[i].v[k] + tau * (yn[i].a[k] + nbodies.bodies[i].a[k]) / 6.;
           }
+        }
+      }
+    }
+  }
+};
+
+struct TestIntegrator {
+  struct RKdata {
+    vec3 r;
+    vec3 v;
+    vec3 a;
+    vec3 vnew;
+  };
+
+  double tau;
+  int n;
+
+  std::vector<RKdata> yn;
+
+  TestIntegrator(int n_, double tau_) : tau(tau_), yn(n_) {}
+
+  void step(double num, NBodyProblem &nbodies) {
+
+    int n = yn.size();
+    double w0 = -std::pow(2., 1. / 3.) / (2. - std::pow(2., 1. / 3.));
+    double w1 = 1. / (2. - std::pow(2., 1. / 3.));
+
+    double c1 = w1 / 2.;
+    double c4 = w1 / 2.;
+    double c2 = (w0 + w1) / 2.;
+    double c3 = (w0 + w1) / 2.;
+
+    double d1 = w1;
+    double d3 = w1;
+    double d2 = w0;
+
+    for (int ii = 0; ii < num; ++ii) {
+      for (int i = 0; i < n; ++i) {
+        for (int k = 0; k < 3; ++k) {
+          nbodies.bodies[i].r[k] += c1 * tau * nbodies.bodies[i].v[k];
+        }
+      }
+      nbodies.calculate_a();
+
+      for (int i = 0; i < n; ++i) {
+        for (int k = 0; k < 3; ++k) {
+          nbodies.bodies[i].v[k] += d1 * tau * nbodies.bodies[i].a[k];
+          nbodies.bodies[i].r[k] += c2 * tau * nbodies.bodies[i].v[k];
+        }
+      }
+      nbodies.calculate_a();
+
+      for (int i = 0; i < n; ++i) {
+        for (int k = 0; k < 3; ++k) {
+          nbodies.bodies[i].v[k] += d2 * tau * nbodies.bodies[i].a[k];
+          nbodies.bodies[i].r[k] += c3 * tau * nbodies.bodies[i].v[k];
+        }
+      }
+      nbodies.calculate_a();
+
+      for (int i = 0; i < n; ++i) {
+        for (int k = 0; k < 3; ++k) {
+          nbodies.bodies[i].v[k] += d3 * tau * nbodies.bodies[i].a[k];
+          nbodies.bodies[i].r[k] += c4 * tau * nbodies.bodies[i].v[k];
         }
       }
     }
@@ -193,14 +257,81 @@ struct Interface {
   }
 };
 
-int main() {
+struct InterfaceTest {
+  NBodyProblem nbodies;
+  TestIntegrator integrator;
+  int n;
+  double t;
+  InterfaceTest(int n_, double tau_)
+      : nbodies(n_), integrator(n_, tau_), n(n_), t(0) {};
+
+  InterfaceTest(const std::string &path, double tau_)
+      : nbodies(0), integrator(0, tau_), n(0), t(0) {
+
+    std::ifstream fin(path);
+
+    fin >> n;
+    NBodyProblem::Body tmp_bod;
+    resize(n);
+
+    for (int i = 0; i < n; ++i) {
+      fin >> tmp_bod.mass >> tmp_bod.r[0] >> tmp_bod.r[1] >> tmp_bod.r[2] >>
+          tmp_bod.v[0] >> tmp_bod.v[1] >> tmp_bod.v[2];
+      nbodies.bodies[i] = tmp_bod;
+    }
+
+    fin.close();
+  };
+
+  void step(double num) {
+    t += num * integrator.tau;
+    integrator.step(num, nbodies);
+  }
+
+  void reserve(int num) {
+    integrator.yn.reserve(num);
+    nbodies.bodies.reserve(num);
+  }
+
+  void resize(int num) {
+    integrator.yn.resize(num);
+    nbodies.bodies.resize(num);
+  }
+
+  template <class U> void save_state(const U &path) {
+    std::ofstream outFile(path, std::ios::app);
+
+    for (size_t i = 0; i < n; ++i)
+      outFile << std::setprecision(14) << nbodies.bodies[i].r[0] << " "
+              << nbodies.bodies[i].r[1] << " " << nbodies.bodies[i].r[2]
+              << std::endl;
+
+    outFile.close();
+  }
+};
+
+void time_test() {
   double tau = 0.01;
   std::cout << "MY N-BODY PROBLEM" << std::endl;
   Interface nbod("4body.txt", tau);
   double t1 = -omp_get_wtime();
-  omp_set_num_threads(1);
   nbod.step(int(20. / tau));
   t1 += omp_get_wtime();
   std::cout << t1 << std::endl;
   nbod.save_state("res.txt");
+}
+
+void err_test() {
+  double tau = 0.01;
+  std::cout << "MY N-BODY PROBLEM" << std::endl;
+  Interface nbod("4body.txt", tau);
+
+  for (int i = 0; i < 200; ++i) {
+    nbod.step(int(0.1 / tau));
+    nbod.save_state("errtest.txt");
+  }
+}
+
+int main(int argc, char **argv) {
+  err_test();
 }
