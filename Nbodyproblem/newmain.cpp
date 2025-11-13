@@ -5,6 +5,7 @@
 #include <omp.h>
 #include <ostream>
 #include <string>
+#include <random>
 #include <vector>
 
 using vec3 = double[3];
@@ -73,14 +74,15 @@ struct RK4Integrator {
   void step(double num, NBodyProblem &nbodies) {
 
     int n = yn.size();
-#pragma omp parallel shared(num, n, nbodies)                                   \
+#pragma omp parallel shared(num, n, nbodies) \
     num_threads(omp_get_max_threads()) if (omp_get_max_threads() > 1)
     {
       for (int ii = 0; ii < num; ++ii) {
 
         nbodies.calculate_a();
+
 #pragma omp for
-        for (int i = 0; i < n; ++i) {
+        for (int i = 0; i < n; ++i)
           for (int k = 0; k < 3; ++k) {
             yn[i].r[k] = nbodies.bodies[i].r[k];
             yn[i].v[k] = nbodies.bodies[i].v[k];
@@ -88,13 +90,15 @@ struct RK4Integrator {
             yn[i].vnew[k] = nbodies.bodies[i].v[k];
           }
 
+#pragma omp for
+        for (int i = 0; i < n; ++i) 
           for (int k = 0; k < 3; ++k) {
             nbodies.bodies[i].r[k] += 0.5 * tau * nbodies.bodies[i].v[k];
             nbodies.bodies[i].v[k] += 0.5 * tau * nbodies.bodies[i].a[k];
           }
-        }
 
         nbodies.calculate_a();
+
 #pragma omp for
         for (int i = 0; i < n; ++i) {
           for (int k = 0; k < 3; ++k) {
@@ -111,6 +115,7 @@ struct RK4Integrator {
         }
 
         nbodies.calculate_a();
+
 #pragma omp for
         for (int i = 0; i < n; ++i) {
           for (int k = 0; k < 3; ++k) {
@@ -245,13 +250,12 @@ struct Interface {
     nbodies.bodies.resize(num);
   }
 
+  // WARNING: no third coordinate
   template <class U> void save_state(const U &path) {
     std::ofstream outFile(path, std::ios::app);
 
     for (size_t i = 0; i < n; ++i)
-      outFile << std::setprecision(14) << nbodies.bodies[i].r[0] << " "
-              << nbodies.bodies[i].r[1] << " " << nbodies.bodies[i].r[2]
-              << std::endl;
+      outFile << t << " " << std::setprecision(14) << nbodies.bodies[i].r[0] << " " << nbodies.bodies[i].r[1] << std::endl;
 
     outFile.close();
   }
@@ -298,11 +302,13 @@ struct InterfaceTest {
     nbodies.bodies.resize(num);
   }
 
+  // save_state написан в основном только ради 4body
+  // записать время в файл, потом пропарсить
   template <class U> void save_state(const U &path) {
-    std::ofstream outFile(path, std::ios::app);
+    std::ofstream outFile(path, std::ios::trunc);
 
     for (size_t i = 0; i < n; ++i)
-      outFile << std::setprecision(14) << nbodies.bodies[i].r[0] << " "
+      outFile << t << "zhopa " << std::setprecision(14) << nbodies.bodies[i].r[0] << " "
               << nbodies.bodies[i].r[1] << " " << nbodies.bodies[i].r[2]
               << std::endl;
 
@@ -310,28 +316,92 @@ struct InterfaceTest {
   }
 };
 
-void time_test() {
-  double tau = 0.01;
+void time_test(double tau = 0.001, double t = 20.) {
   std::cout << "MY N-BODY PROBLEM" << std::endl;
-  Interface nbod("4body.txt", tau);
+  std::cout << "Threads number: " << omp_get_max_threads() << std::endl;
+  Interface nbod("init.txt", tau);
   double t1 = -omp_get_wtime();
-  nbod.step(int(20. / tau));
+  nbod.step(int(t / tau));
   t1 += omp_get_wtime();
-  std::cout << t1 << std::endl;
+  std::cout << "Time: " << t1 << "s" << std::endl;
   nbod.save_state("res.txt");
 }
 
-void err_test() {
-  double tau = 0.01;
+double AbsErr() {
+  std::ifstream file1("errtest.txt"); // файл с 4 телами
+  std::ifstream bodies[4] = {
+        std::ifstream("traj1_new.txt"),
+        std::ifstream("traj2_new.txt"),
+        std::ifstream("traj3_new.txt"),
+        std::ifstream("traj4_new.txt")
+    };
+
+  double maxDiff = 0.;
+  double tmp1 = 0., tmp2 = 0.;
+
+  while (file1) {
+
+    for (int i = 0; i < 4; ++i) {
+      file1 >> tmp1;
+      bodies[i] >> tmp2;
+
+      // if (flag) std::cout << tmp1 << " " << tmp2 << std::endl;
+
+      for (int j = 0; j < 2; ++j) {
+        file1 >> tmp1;
+        bodies[i] >> tmp2;
+        maxDiff = std::max(maxDiff, std::fabs(tmp1 - tmp2));
+      }
+    }
+  }
+  
+
+  return maxDiff;
+}
+
+void err_test(double tau = 0.01) {
   std::cout << "MY N-BODY PROBLEM" << std::endl;
   Interface nbod("4body.txt", tau);
+  std::ofstream outFile("errtest.txt", std::ios::trunc);
+  outFile.close();
+  nbod.save_state("errtest.txt");
 
   for (int i = 0; i < 200; ++i) {
     nbod.step(int(0.1 / tau));
     nbod.save_state("errtest.txt");
   }
+
+  std::cout << "MaxErr = " << AbsErr() << std::endl;
+}
+
+void generate_nbody_file(
+    const std::string &filename,
+    int n,
+    double mass_min, double mass_max,
+    double pos_min, double pos_max,
+    double vel_min, double vel_max,
+    unsigned long long seed = std::random_device{}()
+) {
+    std::mt19937_64 rng(seed);
+    std::uniform_real_distribution<double> mass_d(mass_min, mass_max);
+    std::uniform_real_distribution<double> pos_d(pos_min, pos_max);
+    std::uniform_real_distribution<double> vel_d(vel_min, vel_max);
+
+    std::ofstream fout(filename);
+    if (!fout) return; // можно бросать исключение или вернуть ошибку по желанию
+
+    fout << n << '\n' << std::fixed << std::setprecision(8);
+    for (int i = 0; i < n; ++i) {
+        double m  = mass_d(rng);
+        double x  = pos_d(rng), y  = pos_d(rng), z  = pos_d(rng);
+        double vx = vel_d(rng), vy = vel_d(rng), vz = vel_d(rng);
+        fout << m << ' ' << x << ' ' << y << ' ' << z << ' '
+             << vx << ' ' << vy << ' ' << vz << '\n';
+    }
 }
 
 int main(int argc, char **argv) {
-  err_test();
+  // сгенерировать 100 тел: масса 1..10, позиции -100..100, скорости -5..5, seed=42
+  generate_nbody_file("init.txt", 200, 1.0, 10.0, -100.0, 100.0, -5.0, 5.0, 42ULL);
+  time_test();
 }
