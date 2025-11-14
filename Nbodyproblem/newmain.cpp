@@ -257,58 +257,6 @@ struct Interface {
   }
 };
 
-struct InterfaceTest {
-  NBodyProblem nbodies;
-  TestIntegrator integrator;
-  int n;
-  double t;
-  InterfaceTest(int n_, double tau_)
-      : nbodies(n_), integrator(n_, tau_), n(n_), t(0) {};
-
-  InterfaceTest(const std::string &path, double tau_)
-      : nbodies(0), integrator(0, tau_), n(0), t(0) {
-
-    std::ifstream fin(path);
-
-    fin >> n;
-    NBodyProblem::Body tmp_bod;
-    resize(n);
-
-    for (int i = 0; i < n; ++i) {
-      fin >> tmp_bod.mass >> tmp_bod.r[0] >> tmp_bod.r[1] >> tmp_bod.r[2] >>
-          tmp_bod.v[0] >> tmp_bod.v[1] >> tmp_bod.v[2];
-      nbodies.bodies[i] = tmp_bod;
-    }
-
-    fin.close();
-  };
-
-  void step(double num) {
-    t += num * integrator.tau;
-    integrator.step(num, nbodies);
-  }
-
-  void reserve(int num) {
-    integrator.yn.reserve(num);
-    nbodies.bodies.reserve(num);
-  }
-
-  void resize(int num) {
-    integrator.yn.resize(num);
-    nbodies.bodies.resize(num);
-  }
-
-  template <class U> void save_state(const U &path) {
-    std::ofstream outFile(path, std::ios::app);
-
-    for (size_t i = 0; i < n; ++i)
-      outFile << std::setprecision(14) << nbodies.bodies[i].r[0] << " "
-              << nbodies.bodies[i].r[1] << " " << nbodies.bodies[i].r[2]
-              << std::endl;
-
-    outFile.close();
-  }
-};
 
 void time_test() {
   double tau = 0.01;

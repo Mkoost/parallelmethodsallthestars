@@ -284,7 +284,7 @@ int main(int argn, char **argc) {
 
   LUmul(Acopy, n);
 
-  maxA = std::abs(A[0] - Acopy[0]), minA = std::abs(A[0] - Acopy[0]);
+  maxA = std::fabs(A[0] - Acopy[0]), minA = std::fabs(A[0] - Acopy[0]);
 
   for (int i = 0; i < n * n; ++i) {
     maxA = std::max(std::fabs(A[i] - Acopy[i]), maxA);
