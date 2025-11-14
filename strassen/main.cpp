@@ -2,7 +2,8 @@
 #include <iostream>
 #include<vector>
 #include<cmath>
-#include "labs.h"
+#include "util.inl"
+#include "strassen.inl"
 
 
 double mulIKJ(
@@ -97,3 +98,4 @@ int main() {
 
 	return 0;
 }
+
