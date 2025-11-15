@@ -28,10 +28,42 @@ struct JacobyIteration {
 
 };
 
-struct RedNBlackIterations {
+class RedNBlackIterations {
     double err = 0;
-    /*Какие-то еще переменные*/
-    void step(HelmholtzGridScheme& matrix);
+public:
+    double get_err() { return err; };
+
+    void step(HelmholtzGridScheme& matrix) {
+        int n = matrix.n;
+        double err_ = 0;
+
+#pragma omp for
+        for (int i = 0; i < n - 2; ++i)
+            for (int j = i % 2; j < n - 2; j += 2)
+            {
+                double tmp = matrix(i + 1, j + 1);
+                matrix.approximate_node(i + 1, j + 1);
+                tmp = std::fabs(tmp - matrix(i + 1, j + 1));
+                err_ += tmp;
+            }
+
+#pragma omp for
+        for (int i = 0; i < n - 2; ++i)
+            for (int j = i % 2 + 1; j < n - 2; j += 2)
+            {
+                double tmp = matrix(i + 1, j + 1);
+                matrix.approximate_node(i + 1, j + 1);
+                tmp = std::fabs(tmp - matrix(i + 1, j + 1));
+                err_ += tmp;
+            }
+
+        err_ /= n;
+
+#pragma omp atomic nowait
+        err += err_;
+
+    
+    }
 
 };
 
@@ -45,7 +77,7 @@ public:
         do {
             ++i;
             solver.step();
-        } while (solver.err > err);
+        } while (solver.get_err() > err);
         return i;
     }
     /*Какие-то еще доп. функции*/
