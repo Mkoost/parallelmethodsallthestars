@@ -44,11 +44,9 @@ struct JacobyIteration {
 
     void step(HelmholtzGridScheme& matrix) {
         const int n = matrix.n;
-        double x;
-        double y;        
-        if (n <= 2) return;
-#pragma omp single
 
+        
+#pragma omp single
         old.swap(matrix.grid);
 
         const double h2 = matrix.h * matrix.h;
@@ -66,10 +64,11 @@ struct JacobyIteration {
                 }
             }
         
+        local_err /= n;
         
         #pragma omp critical 
         {
-            err += local_err / n - err_n;
+            err += local_err - err_n;
         }
 
 #pragma omp barrier
