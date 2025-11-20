@@ -49,7 +49,7 @@ struct JacobyIteration {
         if (n <= 2) return;
 #pragma omp single
 
-        old.swap(matrix.grid);  // КЛЮЧЕВАЯ СТРОКА
+        old.swap(matrix.grid);
 
         const double h2 = matrix.h * matrix.h;
         const double denom = 4.0 + matrix.k * matrix.k * h2;
