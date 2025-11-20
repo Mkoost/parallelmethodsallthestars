@@ -59,7 +59,7 @@ struct JacobyIteration {
             for (int i = 1; i < n-1; ++i) {
                 for (int j = 1; j < n-1; ++j) {
                     matrix.approximate_node(i, j, old);
-                    local_err += std::abs(matrix(i, j) - old[i*n + j]);
+                    local_err += std::fabs(matrix(i, j) - old[i*n + j]);
    
                 }
             }
