@@ -1,11 +1,10 @@
-﻿
-#include "HelmholtzSolver.h"
+﻿#include "HelmholtzSolver.h"
 
 
 template<class Solver>
-void time_test(int n = 1000) {
-    double h = 1. / (n - 1);
-    Interface<Solver> interface(n, 1 / (h));
+void time_test(int n = 1000){
+    double h = 1. / (n-1);
+    Interface<Solver> interface(n, 1/(h));
     double t = -omp_get_wtime();
     int iter_num = interface.solve(0.00001);
     t += omp_get_wtime();
@@ -20,6 +19,7 @@ void time_test(int n = 1000) {
             realErr += std::fabs(interface.get_node(i, j) - u(j * h, i * h));
     std::cout << "Real error: " << realErr / n << " time: " << t << "s" << std::endl;
 }
+
 
 
 int main(int argc, char** argv)
