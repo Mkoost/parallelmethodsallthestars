@@ -5,12 +5,12 @@
 #ifndef HELMHOLTZ_OMP__
 #define HELMHOLTZ_OMP__
 
-struct HelmholtzGridScheme {
+struct Grid {
     double h;
     double k;
     int n;
     std::vector<double> grid;
-    HelmholtzGridScheme(int n_, double k_) : h(1. / (n_ - 1)), grid(n_* n_, 0), n(n_), k(k_) {}
+    Grid(int n_, double k_) : h(1. / (n_ - 1)), grid(n_* n_, 0), n(n_), k(k_) {}
 
     double& operator()(int i, int j) { return grid[i * n + j]; }
 
@@ -35,10 +35,10 @@ struct HelmholtzGridScheme {
 struct JacobyIteration {
     double err = 0.0;
     std::vector<double> old;
-    JacobyIteration(int n) : old(n * n) {};
+    JacobyIteration(int n) : old(n* n) {};
     double get_err() const { return err; }
 
-    void step(HelmholtzGridScheme& matrix) {
+    void step(Grid& matrix) {
         const int n = matrix.n;
 
 
@@ -46,7 +46,7 @@ struct JacobyIteration {
         old.swap(matrix.grid);
 
         double local_err = 0.0;
-        // double err_n = err / omp_get_num_threads();
+        double err_n = err / omp_get_num_threads();
 
 #pragma omp for nowait 
         for (int i = 1; i < n - 1; ++i) {
@@ -59,14 +59,12 @@ struct JacobyIteration {
 
         local_err /= n;
 
-#pragma omp single 
-        {
-            err = 0;
-        }
+
 
 #pragma omp critical 
         {
-            err += local_err ;
+            err -= err_n;
+            err += local_err;
         }
 
 #pragma omp barrier
@@ -78,41 +76,40 @@ class RedNBlackIterations {
 public:
     double get_err() { return err; };
     RedNBlackIterations(int n) {}
-    void step(HelmholtzGridScheme& matrix) {
+    void step(Grid& matrix) {
         int n = matrix.n;
+        int nn = n - 2;
+
 
 
         double err_ = 0;
-        // double err_n = err / omp_get_num_threads();
+        double err_n = err / omp_get_num_threads();
 #pragma omp for
-        for (int i = 0; i < n - 2; ++i)
-            for (int j = i % 2; j < n - 2; j += 2)
+        for (int i = 0; i < nn; ++i)
+            for (int j = i & 0x1; j < nn; j += 2)
             {
                 double tmp = matrix(i + 1, j + 1);
                 matrix.approximate_node(i + 1, j + 1);
-                tmp = std::fabs(tmp - matrix(i + 1, j + 1));
-                err_ += tmp;
+                
+                err_ += std::fabs(matrix(i + 1, j + 1) - tmp);
             }
 
 #pragma omp for nowait
-        for (int i = 0; i < n - 2; ++i)
-            for (int j = (i + 1) % 2; j < n - 2; j += 2)
+        for (int i = 0; i < nn; ++i)
+            for (int j = (i + 1) & 0x1; j < nn; j += 2)
             {
                 double tmp = matrix(i + 1, j + 1);
                 matrix.approximate_node(i + 1, j + 1);
-                tmp = std::fabs(tmp - matrix(i + 1, j + 1));
-                err_ += tmp;
+                err_ += std::fabs( matrix(i + 1, j + 1) - tmp);
             }
 
         err_ /= n;
 
-#pragma omp single 
-        {
-            err = 0;
-        }
+
 
 #pragma omp critical 
         {
+            err -= err_n;
             err += err_;
         }
 
@@ -122,27 +119,31 @@ public:
 
 };
 
+
 template<class Solver>
 class Interface {
 
-    HelmholtzGridScheme matrix;
+    Grid matrix;
     Solver solver;
 public:
     Interface(int n, double k) : matrix(n, k), solver(n) {};
     int solve(double err) {
         int i = 0;
 #pragma omp parallel shared(matrix, solver, i)  num_threads(omp_get_max_threads()) if (omp_get_max_threads() > 1)
-        do {
+        {
+            do {
 
 #pragma omp master
-            {
-                ++i;
-            }
+                {
+                    ++i;
+                }
 
-            solver.step(matrix);
+                solver.step(matrix);
 
-        } while (solver.get_err() > err);
+            } while (solver.get_err() > err);
+        }
         return i;
+
     }
     double get_node(int i, int j) { return matrix(i, j); };
     double get_err() { return solver.get_err(); }

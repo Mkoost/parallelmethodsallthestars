@@ -24,22 +24,22 @@ void time_test(int n = 1000){
 
 int main(int argc, char** argv)
 {
-    /*std::cout << "RedNBlackIterations" << std::endl;
+    std::cout << "RedNBlackIterations" << std::endl;
     time_test<RedNBlackIterations>();
 
     std::cout << std::endl << "JacobyIteration" << std::endl;
     time_test<JacobyIteration>();
-    std::cout << std::endl;*/
+    std::cout << std::endl;
 
-    MPI_Init(&argc, &argv);
+    /*MPI_Init(&argc, &argv);
 
     int rank;
     int size;
 
     MPI_Comm_size(MPI_COMM_WORLD, &size);
-    MPI_Comm_rank(MPI_COMM_WORLD, &size);
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
     std::cout << "process " << rank << std::endl;
 
-    MPI_Finalize();
+    MPI_Finalize();*/
 }
