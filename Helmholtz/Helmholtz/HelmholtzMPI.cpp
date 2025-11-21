@@ -41,6 +41,7 @@ class RedNBlackIterationsBlock {
 public:
     double get_err() { return err; };
     RedNBlackIterationsBlock(int n, int m) {}
+    RedNBlackIterationsBlock() {}
     void step(GridBlock& matrix) {
         int n = matrix.n;
         int m = matrix.m;
@@ -68,13 +69,18 @@ public:
                 err_ += tmp;
             }
 
-        err_ /= n;
 
-#pragma omp critical 
+#pragma omp single
         {
-            err -= err_n;
-            err += err_;
+            err = 0;
         }
+
+#pragma omp critical
+        {
+            err += err_ / m;
+        }
+
+        
 
 #pragma omp barrier
 
@@ -89,19 +95,57 @@ public:
         int rank;
         int size;
     public:
-        InterfaceMPI(int n, double k) {
+        InterfaceMPI(int n, double k): solver(n, n / size + 1) {
 
             MPI_Comm_size(MPI_COMM_WORLD, &size);
             MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-            if (rank != size - 1)
-                matrix(n, n / size + 1);
-            else
-                matrix(n, n / size);
 
+            if (rank < n % size)
+            {
+                matrix.grid.resize(n, n / size + 1);
+                matrix.k = k;
+                matrix.h = 1. / (n - 1);
+                matrix.n = n;
+                matrix.m = n / size + 1;
+                
+            }
+            else
+            {
+                matrix.grid.resize(n, n / size);
+                matrix.k = k;
+                matrix.h = 1. / (n - 1);
+                matrix.n = n;
+                matrix.m = n / size;
+
+            }
+            
         };
+        
+       void data_synchronize_v1() {
+           int n = matrix.n;
+            switch (rank) {
+            case 0:
+                MPI_Recv(&matrix(matrix.m - 1, 0), n, MPI_DOUBLE, rank + 1, 10, MPI_COMM_WORLD);
+                MPI_Send(&matrix(matrix.m - 2, 0), n, MPI_DOUBLE, rank + 1, 10, MPI_COMM_WORLD);
+                break;
+            case size - 1:
+                MPI_Send(&matrix(1, 0), n, MPI_DOUBLE, rank - 1, 10, MPI_COMM_WORLD);
+                MPI_Recv(&matrix(0, 0), n, MPI_DOUBLE, rank - 1, 10, MPI_COMM_WORLD);
+                break;
+             default:
+                MPI_Send(&matrix(1, 0), n, MPI_DOUBLE, rank - 1, 10, MPI_COMM_WORLD);
+                MPI_Recv(&matrix(matrix.m - 1, 0), n, MPI_DOUBLE, rank + 1, 10, MPI_COMM_WORLD);
+
+                MPI_Send(&matrix(matrix.m - 2, 0), n, MPI_DOUBLE, rank + 1, 10, MPI_COMM_WORLD);
+                MPI_Recv(&matrix(0, 0), n, MPI_DOUBLE, rank - 1, 10, MPI_COMM_WORLD);
+                break;
+            }
+
+        }
+
         int solve(double err) {
             int i = 0;
-#pragma omp parallel shared(matrix, solver, i)  num_threads(omp_get_max_threads()) if (omp_get_max_threads() > 1)
+//#pragma omp parallel shared(matrix, solver, i)  num_threads(omp_get_max_threads()) if (omp_get_max_threads() > 1)
             do {
 
 #pragma omp master
@@ -122,37 +166,5 @@ public:
 
 };
 
-template<class Solver>
-class InterfaceMPI {
 
-    Grid matrix;
-    Solver solver;
-
-public:
-    // 
-    InterfaceMPI(int n, double k) : matrix(n, k), solver(n) {};
-
-    int solve(double err) {
-        int i = 0;
-#pragma omp parallel shared(matrix, solver, i)  num_threads(omp_get_max_threads()) if (omp_get_max_threads() > 1)
-        do {
-
-#pragma omp master
-            {
-                ++i;
-            }
-
-            solver.step(matrix);
-
-        } while (solver.get_err() > err);
-        return i;
-    }
-
-    double get_node(int i, int j) { return matrix(i, j); }
-
-    double get_err() { return solver.get_err(); }
-
-    void print() { matrix.print(); }
-    /*Какие-то еще доп. функции*/
-};
 #endif

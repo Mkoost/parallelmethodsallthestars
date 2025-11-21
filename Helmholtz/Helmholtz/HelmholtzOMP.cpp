@@ -42,13 +42,13 @@ struct JacobyIteration {
         const int n = matrix.n;
 
 
-#pragma omp single
+//#pragma omp single
         old.swap(matrix.grid);
 
         double local_err = 0.0;
         double err_n = err / omp_get_num_threads();
 
-#pragma omp for nowait 
+//#pragma omp for nowait 
         for (int i = 1; i < n - 1; ++i) {
             for (int j = 1; j < n - 1; ++j) {
                 matrix.approximate_node(i, j, old);
@@ -61,13 +61,13 @@ struct JacobyIteration {
 
 
 
-#pragma omp critical 
+//#pragma omp critical 
         {
             err -= err_n;
             err += local_err;
         }
 
-#pragma omp barrier
+//#pragma omp barrier
     }
 };
 
@@ -84,7 +84,7 @@ public:
 
         double err_ = 0;
         double err_n = err / omp_get_num_threads();
-#pragma omp for
+//#pragma omp for
         for (int i = 0; i < nn; ++i)
             for (int j = i & 0x1; j < nn; j += 2)
             {
@@ -94,7 +94,7 @@ public:
                 err_ += std::fabs(matrix(i + 1, j + 1) - tmp);
             }
 
-#pragma omp for nowait
+//#pragma omp for nowait
         for (int i = 0; i < nn; ++i)
             for (int j = (i + 1) & 0x1; j < nn; j += 2)
             {
@@ -107,13 +107,13 @@ public:
 
 
 
-#pragma omp critical 
+//#pragma omp critical 
         {
             err -= err_n;
             err += err_;
         }
 
-#pragma omp barrier
+//#pragma omp barrier
 
     }
 
@@ -129,11 +129,11 @@ public:
     Interface(int n, double k) : matrix(n, k), solver(n) {};
     int solve(double err) {
         int i = 0;
-#pragma omp parallel shared(matrix, solver, i)  num_threads(omp_get_max_threads()) if (omp_get_max_threads() > 1)
+//#pragma omp parallel shared(matrix, solver, i)  num_threads(omp_get_max_threads()) if (omp_get_max_threads() > 1)
         {
             do {
 
-#pragma omp master
+//#pragma omp master
                 {
                     ++i;
                 }
