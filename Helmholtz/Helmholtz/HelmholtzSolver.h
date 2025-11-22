@@ -4,6 +4,7 @@
 #include <vector>
 #include <omp.h>
 #include <mpi.h>
+#include <string>
 
 #ifndef MYMATHEMATICS__
 #define MYMATHEMATICS__
