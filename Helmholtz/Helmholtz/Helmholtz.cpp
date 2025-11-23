@@ -21,7 +21,7 @@ void time_test(int n = 20){
 }
 
 template<class Solver>
-void time_test2(int n = 1000) {
+void time_test2(int n = 1003) {
     int rank;
     int size;
 

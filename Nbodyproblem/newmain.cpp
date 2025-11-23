@@ -81,7 +81,7 @@ struct RK4Integrator {
 
         nbodies.calculate_a();
 
-#pragma omp for
+#pragma omp for 
         for (int i = 0; i < n; ++i)
           for (int k = 0; k < 3; ++k) {
             yn[i].r[k] = nbodies.bodies[i].r[k];
