@@ -5,6 +5,7 @@
 #include <omp.h>
 #include <mpi.h>
 #include <string>
+#include <type_traits>
 
 #ifndef MYMATHEMATICS__
 #define MYMATHEMATICS__
