@@ -161,6 +161,40 @@ public:
         solver.err = sm;
     }
 
+    void data_synchronize_v2() {
+        if (size <= 1) return;
+
+        int n = matrix.n;
+
+        // Только внутренние границы обмениваем
+        if (rank > 0) {
+            // Отправляем свою верхнюю строку вверх + получаем ghost сверху
+            MPI_Sendrecv(
+                &matrix(1, 0),          n, MPI_DOUBLE, rank-1, 100,
+                &matrix(0, 0),          n, MPI_DOUBLE, rank-1, 200,
+                MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        } else {
+            // rank == 0: верхняя ghost-строка всегда 0 — НЕ получаем ничего!
+            std::fill(&matrix(0, 0), &matrix(0, n), 0.0);
+        }
+
+        if (rank < size - 1) {
+            // Отправляем нижнюю строку вниз + получаем ghost снизу
+            MPI_Sendrecv(
+                &matrix(matrix.m-2, 0), n, MPI_DOUBLE, rank+1, 200,
+                &matrix(matrix.m-1, 0), n, MPI_DOUBLE, rank+1, 100,
+                MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        } else {
+            // rank == size-1: нижняя ghost-строка всегда 0
+            std::fill(&matrix(matrix.m-1, 0), &matrix(matrix.m-1, n), 0.0);
+        }
+
+        // Ошибка — как и раньше
+        double global_err = 0.0;
+        MPI_Allreduce(&solver.err, &global_err, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+        solver.err = global_err;
+    }
+
     int solve(double err) {
         int i = 0;
         do {
@@ -171,17 +205,65 @@ public:
 
             solver.step(matrix);
 
-            data_synchronize_v1();
+            data_synchronize_v2();
 
         } while (solver.get_err() > err);
         return i;
+    }
+
+    int solve_nonblock(double err) {
+        int iter = 0;
+        MPI_Request requests[4];
+        int req_cnt = 0;
+        int n = matrix.n;
+        int m = matrix.m;
+
+        // === Первая итерация: просто считаем без перекрытия ===
+        solver.step(matrix);
+
+        while (true) {
+            ++iter;
+
+            // 1. Запускаем неблокирующий обмен границами ПЕРЕД вычислениями
+            req_cnt = 0;
+            if (size > 1) {
+                if (rank > 0) {
+                    MPI_Isend(&matrix(1, 0),     n, MPI_DOUBLE, rank-1, 100, MPI_COMM_WORLD, &requests[req_cnt++]);
+                    MPI_Irecv(&matrix(0, 0),     n, MPI_DOUBLE, rank-1, 200, MPI_COMM_WORLD, &requests[req_cnt++]);
+                }
+                if (rank < size-1) {
+                    MPI_Isend(&matrix(m-2, 0),   n, MPI_DOUBLE, rank+1, 200, MPI_COMM_WORLD, &requests[req_cnt++]);
+                    MPI_Irecv(&matrix(m-1, 0),   n, MPI_DOUBLE, rank+1, 100, MPI_COMM_WORLD, &requests[req_cnt++]);
+                }
+            }
+
+            // 2. СЧИТАЕМ НОВЫЕ ЗНАЧЕНИЯ — коммуникации идут параллельно!
+            solver.step(matrix);
+
+            // 3. Только теперь ждём, когда придут ghost-значения от предыдущей итерации
+            if (req_cnt > 0) {
+                MPI_Waitall(req_cnt, requests, MPI_STATUSES_IGNORE);
+            }
+
+            // 4. Принудительно зануляем внешние ГУ (важно!)
+            if (rank == 0)       std::fill(&matrix(0,0),     &matrix(0,n),     0.0);
+            if (rank == size-1)  std::fill(&matrix(m-1,0),   &matrix(m-1,n),   0.0);
+
+            // 5. Собираем ошибку
+            double global_err = 0.0;
+            MPI_Allreduce(&solver.err, &global_err, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+            solver.err = global_err;
+
+            if (solver.err <= err) break;
+        }
+
+        return iter;
     }
 
 
     double get_node(int i, int j) { return matrix(i, j); };
     double get_err() { return solver.get_err(); }
     void print() { matrix.print(); }
-    /*�����-�� ��� ���. �������*/
 };
 
 

@@ -20,6 +20,7 @@ void time_test(int n = 20){
     std::cout << "Real error: " << realErr / n << " time: " << t << "s" << std::endl;
 }
 
+
 template<class Solver>
 void time_test2(int n = 1003) {
     int rank;
@@ -31,7 +32,7 @@ void time_test2(int n = 1003) {
     double h = 1. / (n - 1);
     InterfaceMPI<Solver> interface(n, 1 / (h));
     double t = -omp_get_wtime();
-    int iter_num = interface.solve(0.00000001);
+    int iter_num = interface.solve_nonblock(0.00000001);
     t += omp_get_wtime();
 
     std::cout << "Error: " << interface.get_err() << ", iteration: " << iter_num << ", process: " << rank << ", global_i: " << interface.matrix.global_i << "\n";
