@@ -57,7 +57,7 @@ public:
     RedNBlackIterationsBlock(int n, int m) : err(0) {
 
     }
-    RedNBlackIterationsBlock() : err(0){
+    RedNBlackIterationsBlock() : err(0) {
     }
     void init(int n, int m) {}
 
@@ -67,7 +67,6 @@ public:
 
 
         double err_ = 0;
-        double err_n = err / omp_get_num_threads();
 
         for (int i = 0; i < m - 2; ++i)
             for (int j = (i + matrix.global_i) % 2; j < n - 2; j += 2)
@@ -87,8 +86,56 @@ public:
                 err_ += tmp;
             }
 
-            err = 0;
-            err += err_ / n;
+        err = err_ / n;
+    }
+
+    void step_nonblock(GridBlock& matrix, MPI_Request* req, MPI_Status* sts, const int& num, const int& rank, const int& size) {
+        int n = matrix.n;
+        int m = matrix.m;
+
+
+        double err_ = 0;
+
+        for (int i = 2; i < m - 4; ++i)
+            for (int j = (i + matrix.global_i) % 2; j < n - 2; j += 2)
+            {
+                double tmp = matrix(i + 1, j + 1);
+                matrix.approximate_node(i + 1, j + 1);
+                tmp = std::fabs(tmp - matrix(i + 1, j + 1));
+                err_ += tmp;
+            }
+
+        MPI_Waitall(num, req, sts);
+
+        for (int i = 0; i < 2; ++i)
+            for (int j = (i + matrix.global_i) % 2; j < n - 2; j += 2)
+            {
+                double tmp = matrix(i + 1, j + 1);
+                matrix.approximate_node(i + 1, j + 1);
+                tmp = std::fabs(tmp - matrix(i + 1, j + 1));
+                err_ += tmp;
+            }
+
+        for (int i = m - 4; i < m - 2; ++i)
+            for (int j = (i + matrix.global_i) % 2; j < n - 2; j += 2)
+            {
+                double tmp = matrix(i + 1, j + 1);
+                matrix.approximate_node(i + 1, j + 1);
+                tmp = std::fabs(tmp - matrix(i + 1, j + 1));
+                err_ += tmp;
+            }
+
+
+        for (int i = 0; i < m - 2; ++i)
+            for (int j = (i + matrix.global_i + 1) % 2; j < n - 2; j += 2)
+            {
+                double tmp = matrix(i + 1, j + 1);
+                matrix.approximate_node(i + 1, j + 1);
+                tmp = std::fabs(tmp - matrix(i + 1, j + 1));
+                err_ += tmp;
+            }
+
+        err = err_ / n;
     }
 };
 
@@ -122,6 +169,43 @@ struct JacobyIterationBlock {
         err = 0;
         err += local_err / n;
 
+    }
+
+    void step_nonblock(GridBlock& matrix, MPI_Request* req, MPI_Status* sts, const int& num, const int& rank, const int& size) {
+        int n = matrix.n;
+        int m = matrix.m;
+
+        old.swap(matrix.grid);
+
+        double local_err = 0.0;
+        double err_n = err / omp_get_num_threads();
+
+        for (int i = 2; i < m - 2; ++i) {
+            for (int j = 1; j < n - 1; ++j) {
+                matrix.approximate_node(i, j, old);
+                local_err += std::fabs(matrix(i, j) - old[i * n + j]);
+
+            }
+        }
+
+        MPI_Waitall(num, req, sts);
+
+            for (int j = 1; j < n - 1; ++j) {
+                matrix.approximate_node(1, j, old);
+                local_err += std::fabs(matrix(1, j) - old[1 * n + j]);
+
+            }
+
+            for (int j = 1; j < n - 1; ++j) {
+                matrix.approximate_node(m - 2, j, old);
+                local_err += std::fabs(matrix(m - 2, j) - old[(m - 2) * n + j]);
+
+            }
+
+        err = 0;
+        err = local_err / n;
+    
+    
     }
 };
 
@@ -208,45 +292,28 @@ public:
     }
 
     int solve_nonblock(double err) {
-        int iter = 0;
-        MPI_Request requests[4];
-        int req_cnt = 0;
-        int n = matrix.n;
-        int m = matrix.m;
+        int i = 0;
+        MPI_Request req[4]{ MPI_REQUEST_NULL , MPI_REQUEST_NULL , MPI_REQUEST_NULL , MPI_REQUEST_NULL};
+        MPI_Status sts[4];
 
-        solver.step(matrix);
+        int num = (rank != 0) && (rank != size - 1) ? 4 : 2;
 
-        while (true) {
-            ++iter;
+        do {
+            //std::cout << matrix.m << " " << matrix.n << " " << matrix.grid.size() << std::endl;
 
-            req_cnt = 0;
-            if (size > 1) {
-                if (rank > 0) {
-                    MPI_Isend(&matrix(1, 0), n, MPI_DOUBLE, rank - 1, 100, MPI_COMM_WORLD, &requests[req_cnt++]);
-                    MPI_Irecv(&matrix(0, 0), n, MPI_DOUBLE, rank - 1, 200, MPI_COMM_WORLD, &requests[req_cnt++]);
-                }
-                if (rank < size - 1) {
-                    MPI_Isend(&matrix(m - 2, 0), n, MPI_DOUBLE, rank + 1, 200, MPI_COMM_WORLD, &requests[req_cnt++]);
-                    MPI_Irecv(&matrix(m - 1, 0), n, MPI_DOUBLE, rank + 1, 100, MPI_COMM_WORLD, &requests[req_cnt++]);
-                }
-            }
+            ++i;
 
-            solver.step(matrix);
 
-            if (req_cnt > 0) {
-                MPI_Waitall(req_cnt, requests, MPI_STATUSES_IGNORE);
-            }
+            solver.step_nonblock(matrix, req, sts, num, rank, size);
 
-            
+            MPI_Waitall(num, req, sts);
+            data_synchronize_v3(req);
 
-            double global_err = 0.0;
-            MPI_Allreduce(&solver.err, &global_err, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-            solver.err = global_err;
+        } while (solver.get_err() > err);
+        MPI_Waitall(num, req, sts);
 
-            if (solver.err <= err) break;
-        }
+        return i;
 
-        return iter;
     }
 
 
@@ -279,36 +346,68 @@ private:
         }
 
 
-        double sm = 0;
-        MPI_Allreduce(&solver.err, &sm, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-        //sm /= matrix.n;
-        solver.err = sm;
+        err_synchronize();
     }
 
     void data_synchronize_v2() {
-        if (size <= 1) return;
+        int n = matrix.n;
+        MPI_Status st;
 
+        if (size == 1) return;
+        if (rank == 0)
+        {
+            
+            MPI_Sendrecv(&matrix(matrix.m - 2, 0), n, MPI_DOUBLE, rank + 1, 10, &matrix(matrix.m - 1, 0), n, MPI_DOUBLE, rank + 1, 10, MPI_COMM_WORLD, &st);
+        }
+        else if (rank == size - 1)
+        {
+            MPI_Sendrecv(&matrix(1, 0), n, MPI_DOUBLE, rank - 1, 10, &matrix(0, 0), n, MPI_DOUBLE, rank - 1, 10, MPI_COMM_WORLD, &st);
+        }
+        else
+        {
+            MPI_Sendrecv(&matrix(1, 0), n, MPI_DOUBLE, rank - 1, 10, &matrix(matrix.m - 1, 0), n, MPI_DOUBLE, rank + 1, 10, MPI_COMM_WORLD, &st);
+
+            MPI_Sendrecv(&matrix(matrix.m - 2, 0), n, MPI_DOUBLE, rank + 1, 10, &matrix(0, 0), n, MPI_DOUBLE, rank - 1, 10, MPI_COMM_WORLD, &st);
+        }
+
+
+        err_synchronize();
+    }
+
+    void data_synchronize_v3(MPI_Request* req) {
         int n = matrix.n;
 
-        if (rank > 0) {
-            MPI_Sendrecv(
-                &matrix(1, 0), n, MPI_DOUBLE, rank - 1, 100,
-                &matrix(0, 0), n, MPI_DOUBLE, rank - 1, 200,
-                MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        err_synchronize();
+
+        if (size == 1) return;
+        if (rank == 0)
+        {
+            MPI_Irecv(&matrix(matrix.m - 1, 0), n, MPI_DOUBLE, rank + 1, 10, MPI_COMM_WORLD, req);
+            MPI_Isend(&matrix(matrix.m - 2, 0), n, MPI_DOUBLE, rank + 1, 20, MPI_COMM_WORLD, req + 1);
+        }
+        else if (rank == size - 1)
+        {
+            MPI_Isend(&matrix(1, 0), n, MPI_DOUBLE, rank - 1, 10, MPI_COMM_WORLD, req);
+            MPI_Irecv(&matrix(0, 0), n, MPI_DOUBLE, rank - 1, 20, MPI_COMM_WORLD, req + 1);
+        }
+        else
+        {
+            MPI_Isend(&matrix(1, 0), n, MPI_DOUBLE, rank - 1, 10, MPI_COMM_WORLD, req);
+            MPI_Irecv(&matrix(matrix.m - 1, 0), n, MPI_DOUBLE, rank + 1, 10, MPI_COMM_WORLD, req + 1);
+
+            MPI_Isend(&matrix(matrix.m - 2, 0), n, MPI_DOUBLE, rank + 1, 20, MPI_COMM_WORLD, req + 2);
+            MPI_Irecv(&matrix(0, 0), n, MPI_DOUBLE, rank - 1, 20, MPI_COMM_WORLD, req + 3);
         }
 
 
-        if (rank < size - 1) {
-            MPI_Sendrecv(
-                &matrix(matrix.m - 2, 0), n, MPI_DOUBLE, rank + 1, 200,
-                &matrix(matrix.m - 1, 0), n, MPI_DOUBLE, rank + 1, 100,
-                MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-        }
+        
+    }
 
+    void err_synchronize() {
 
-        double global_err = 0.0;
-        MPI_Allreduce(&solver.err, &global_err, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-        solver.err = global_err;
+        double sm = 0;
+        MPI_Allreduce(&solver.err, &sm, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+        solver.err = sm;
     }
 };
 

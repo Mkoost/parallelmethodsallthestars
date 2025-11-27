@@ -22,7 +22,7 @@ void time_test(int n = 1000){
 
 
 template<class Solver, class Forwarding = ForwardingTypes::SendAndRecv>
-void time_test2(int n = 1000) {
+void time_test2(int n = 5000) {
     int rank;
     int size;
 
@@ -61,7 +61,7 @@ void time_test2(int n = 1000) {
     if (rank == 0)
     {
         std::string out = "";
-        std::cout << "Real error: " << sumerr / n << ", iteration: " << iter_num << std::endl << std::endl;
+        std::cout << "Real error: " << sumerr / n << ", iteration: " << iter_num << ", time: " << t << std::endl << std::endl;
 
     }
 
