@@ -6,13 +6,11 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
-#include <iterator>
 #include <omp.h>
 #include <ostream>
 #include <string>
 #include <random>
-#include <vector>
-
+#include <chrono>
 
 using real = double;
 using vec3 = real[3];
@@ -111,7 +109,7 @@ void CalculateAccelerationCUDA() {
 
         for(int j = 0; j < BS; ++j)
         {
-            int jj =  j;
+            int jj =  (threadIdx.x + j) % BS;
             if(i + jj >= NBINIT_DDEVC.size) continue;
             jj += BS;
 
@@ -157,8 +155,8 @@ void RK4step1CUDA() {
 
     for (int k = 0; k < 3; ++k)
     {
-        NBINIT_DDEVC.devBodies[idx].v[k] += 0.5 * NBINIT_DDEVC.tau * NBINIT_DDEVC.devBodies[idx].a[k];
         NBINIT_DDEVC.devBodies[idx].r[k] += 0.5 * NBINIT_DDEVC.tau * NBINIT_DDEVC.devBodies[idx].v[k];
+        NBINIT_DDEVC.devBodies[idx].v[k] += 0.5 * NBINIT_DDEVC.tau * NBINIT_DDEVC.devBodies[idx].a[k];
     }
 }
 
@@ -265,8 +263,9 @@ void nbody_step(int num_step, int size, int block_size=BS) {
     }
 }
 
+
 __host__
-void start_program(int argc, char** argv) {
+double start_program(const std::string& input, const std::string& output) {
     int size = 1024;
     int block = BS;
     real tau = 0.01;
@@ -277,29 +276,74 @@ void start_program(int argc, char** argv) {
     Body* bodies;
 
     
-    input_from_file(argv[1], bodies, size);
+    input_from_file(input, bodies, size);
     
 
     NBodyInit(size, tau);
 
-
+    auto start = std::chrono::high_resolution_clock::now();
     cudaMemcpy(NBINIT_DHOST.devBodies, bodies, sizeof(Body) * size, cudaMemcpyHostToDevice);
     
     nbody_step(T / tau, size, block);
 
     cudaMemcpy(bodies, NBINIT_DHOST.devBodies, sizeof(Body) * size, cudaMemcpyDeviceToHost);
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> elapsed = end - start;
 
-    output_to_file(argv[2], bodies, size, T);
+    output_to_file(output, bodies, size, T);
 
     delete[] bodies;
 
     NBodyFinilize();
+    return elapsed.count();
 }
 
-int main(int argc, char** argv) {
-    if (argc != 3) {std::cout << "It must be 3 arguments!" << std::endl; return 0;}
 
-    start_program(argc, argv);
+void generate_nbody_file(
+    const std::string &filename,
+    int n,
+    double mass_min, double mass_max,
+    double pos_min, double pos_max,
+    double vel_min, double vel_max,
+    unsigned long long seed = std::random_device{}()
+) {
+    std::mt19937_64 rng(seed);
+    std::uniform_real_distribution<double> mass_d(mass_min, mass_max);
+    std::uniform_real_distribution<double> pos_d(pos_min, pos_max);
+    std::uniform_real_distribution<double> vel_d(vel_min, vel_max);
+
+    std::ofstream fout(filename);
+    if (!fout) return; // можно бросать исключение или вернуть ошибку по желанию
+
+    fout << n << '\n' << std::fixed << std::setprecision(8);
+    for (int i = 0; i < n; ++i) {
+        double m  = mass_d(rng);
+        double x  = pos_d(rng), y  = pos_d(rng), z  = pos_d(rng);
+        double vx = vel_d(rng), vy = vel_d(rng), vz = vel_d(rng);
+        fout << m << ' ' << x << ' ' << y << ' ' << z << ' '
+             << vx << ' ' << vy << ' ' << vz << '\n';
+    }
+}
+
+
+int main(int argc, char** argv) {
+    //if (argc != 3) {std::cout << "It must be 3 arguments!" << std::endl; return 0;}
+
+    generate_nbody_file("init.txt", 16384, 1.0, 10.0, -100.0, 100.0, -5.0, 5.0, 42ULL);
+    double t = start_program("4body.txt", "res.txt");
+    std::cout << "t: " << t << "s\n";
 
     return 0;
 }
+
+
+
+
+
+
+
+
+
+
+
+
