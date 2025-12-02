@@ -12,10 +12,10 @@
 #include <random>
 #include <chrono>
 
-using real = double;
+using real = float;
 using vec3 = real[3];
 
-constexpr int BS = 256;
+constexpr int BS = 512;
 
 
 struct Body {
@@ -28,7 +28,6 @@ struct Body {
 struct BodyTMP {
     real mass;
     vec3 r;
-    vec3 a;
 };
 
 
@@ -78,62 +77,56 @@ __host__ void NBodyFinilize() {
 }
 
 
-__global__
+__global__ 
 void CalculateAccelerationCUDA() {
-    
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     __shared__ BodyTMP bodies[2 * BS];
 
-    if (idx >= NBINIT_DDEVC.size) return;
-    //printf("bl: %d, idth: %d, sz: %d\n", blockIdx.x, threadIdx.x, NBINIT_DDEVC.size);
-    
+    if (idx >= NBINIT_DDEVC.size) return;  // Это ок, в начале
 
+    // Initial load (unchanged)
     bodies[threadIdx.x].mass = NBINIT_DDEVC.devBodies[idx].mass;
-    for (int k = 0; k < 3; ++k)
-        bodies[threadIdx.x].r[k] = NBINIT_DDEVC.devBodies[idx].r[k];
-
-    for (int k = 0; k < 3; ++k)
-        bodies[threadIdx.x].a[k] = 0;
-
+    for (int k = 0; k < 3; ++k) bodies[threadIdx.x].r[k] = NBINIT_DDEVC.devBodies[idx].r[k];
+    //for (int k = 0; k < 3; ++k) bodies[threadIdx.x].a[k] = 0;
     __syncthreads();
-    
+
+    vec3 a;
+    a[0] = a[1] = a[2] = 0;
+
     for (int i = 0, n = NBINIT_DDEVC.size; i < n; i += BS) {
-      if(i + threadIdx.x >= NBINIT_DDEVC.size) return;
-        
-        bodies[BS + threadIdx.x].mass = NBINIT_DDEVC.devBodies[i + threadIdx.x].mass;
-
-        for (int k = 0; k < 3; ++k)
-            bodies[BS + threadIdx.x].r[k] = NBINIT_DDEVC.devBodies[i + threadIdx.x].r[k];
-
+        bool active = (i + threadIdx.x < n);
+        if (active) {
+            bodies[BS + threadIdx.x].mass = NBINIT_DDEVC.devBodies[i + threadIdx.x].mass;
+            for (int k = 0; k < 3; ++k) bodies[BS + threadIdx.x].r[k] = NBINIT_DDEVC.devBodies[i + threadIdx.x].r[k];
+        } else {
+            bodies[BS + threadIdx.x].mass = 0.0f;  // Фиктивная, не повлияет из-за continue ниже
+            for (int k = 0; k < 3; ++k) bodies[BS + threadIdx.x].r[k] = 0.0f;
+        }
         __syncthreads();
 
-        for(int j = 0; j < BS; ++j)
-        {
-            int jj =  (threadIdx.x + j) % BS;
-            if(i + jj >= NBINIT_DDEVC.size) continue;
+        
+        for (int j = 0; j < BS; ++j) {
+            int jj = (threadIdx.x + j) % BS;
+            if (i + jj >= n) continue;
             jj += BS;
 
             vec3 r;
+            for (int k = 0; k < 3; ++k) r[k] = bodies[threadIdx.x].r[k] - bodies[jj].r[k];
+
+            real r2 = r[0] * r[0] + r[1] * r[1] + r[2] * r[2];  
+            real r3 = r2 * sqrtf(r2) + 1e-10f;  
+
             
 
-            for (int k = 0; k < 3; ++k)
-              r[k] = bodies[threadIdx.x].r[k] - bodies[jj].r[k];
-
-            real r3 = r[0] * r[0] + r[1] * r[1] + r[2] * r[2];
-            r3 *= sqrt(r3);
-            r3 = max(r3, 1e-10);
-
-            for (int k = 0; k < 3; ++k)
-                bodies[threadIdx.x].a[k] -=  (bodies[jj].mass) * r[k] / r3;
-            
+            real tmp = bodies[jj].mass / r3;  
+            for (int k = 0; k < 3; ++k) a[k] -= tmp * r[k];
         }
         __syncthreads();
     }
 
-    for (int k = 0; k < 3; ++k)
-        NBINIT_DDEVC.devBodies[idx].a[k] = G * bodies[threadIdx.x].a[k];
+    
+    for (int k = 0; k < 3; ++k) NBINIT_DDEVC.devBodies[idx].a[k] = G * a[k];
 }
-
 
 __global__
 void RK4step1CUDA() {
@@ -329,8 +322,8 @@ void generate_nbody_file(
 int main(int argc, char** argv) {
     //if (argc != 3) {std::cout << "It must be 3 arguments!" << std::endl; return 0;}
 
-    generate_nbody_file("init.txt", 16384, 1.0, 10.0, -100.0, 100.0, -5.0, 5.0, 42ULL);
-    double t = start_program("4body.txt", "res.txt");
+    generate_nbody_file("init.txt", 10000, 1.0, 10.0, -100.0, 100.0, -5.0, 5.0, 42ULL);
+    double t = start_program("init.txt", "res.txt");
     std::cout << "t: " << t << "s\n";
 
     return 0;
