@@ -82,9 +82,8 @@ void CalculateAccelerationCUDA() {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     __shared__ BodyTMP bodies[2 * BS];
 
-    if (idx >= NBINIT_DDEVC.size) return;  // Это ок, в начале
+    if (idx >= NBINIT_DDEVC.size) return;  
 
-    // Initial load (unchanged)
     bodies[threadIdx.x].mass = NBINIT_DDEVC.devBodies[idx].mass;
     for (int k = 0; k < 3; ++k) bodies[threadIdx.x].r[k] = NBINIT_DDEVC.devBodies[idx].r[k];
     //for (int k = 0; k < 3; ++k) bodies[threadIdx.x].a[k] = 0;
@@ -328,6 +327,7 @@ int main(int argc, char** argv) {
 
     return 0;
 }
+
 
 
 
