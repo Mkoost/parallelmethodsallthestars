@@ -98,7 +98,7 @@ void CalculateAccelerationCUDA() {
             bodies[BS + threadIdx.x].mass = NBINIT_DDEVC.devBodies[i + threadIdx.x].mass;
             for (int k = 0; k < 3; ++k) bodies[BS + threadIdx.x].r[k] = NBINIT_DDEVC.devBodies[i + threadIdx.x].r[k];
         } else {
-            bodies[BS + threadIdx.x].mass = 0.0f;  // Фиктивная, не повлияет из-за continue ниже
+            bodies[BS + threadIdx.x].mass = 0.0f;  
             for (int k = 0; k < 3; ++k) bodies[BS + threadIdx.x].r[k] = 0.0f;
         }
         __syncthreads();
@@ -327,6 +327,7 @@ int main(int argc, char** argv) {
 
     return 0;
 }
+
 
 
 
