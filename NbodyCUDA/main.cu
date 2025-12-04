@@ -305,7 +305,7 @@ void generate_nbody_file(
     std::uniform_real_distribution<double> vel_d(vel_min, vel_max);
 
     std::ofstream fout(filename);
-    if (!fout) return; // можно бросать исключение или вернуть ошибку по желанию
+    if (!fout) return; 
 
     fout << n << '\n' << std::fixed << std::setprecision(8);
     for (int i = 0; i < n; ++i) {
@@ -327,6 +327,7 @@ int main(int argc, char** argv) {
 
     return 0;
 }
+
 
 
 
